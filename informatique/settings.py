@@ -197,12 +197,10 @@ REST_FRAMEWORK = {
 }
 
 
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-     #'https://www.pubms.com',
-    #'https://pubms.com',
-    #'https://harmonious-surprise-production-261c.up.railway.app',
-]
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='http://localhost:3000',
+).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
 from datetime import timedelta

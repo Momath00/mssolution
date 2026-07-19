@@ -18,6 +18,4 @@ COPY . .
 
 WORKDIR /app/informatique
 
-RUN python manage.py collectstatic --noinput
-
-CMD ["sh", "-c", "python manage.py migrate && gunicorn wsgi:application --bind 0.0.0.0:8080"]
+CMD ["sh", "-c", "python manage.py collectstatic --noinput && python manage.py migrate && gunicorn wsgi:application --bind 0.0.0.0:${PORT:-8080}"]
