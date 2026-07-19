@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+    @page {
+        size: Letter;
+        margin: 2cm 1.8cm;
+    }
+    body {
+        font-family: 'Helvetica', 'Arial', sans-serif;
+        font-size: 10.5pt;
+        color: #1a1a1a;
+    }
+    .en-tete {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #1a1440;
+        color: #fff;
+        padding: 20px 24px;
+        border-radius: 8px;
+        margin: -6px -6px 24px;
+    }
+    .coordonnees-entreprise {
+        font-size: 9pt;
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.75);
+    }
+    .coordonnees-entreprise strong {
+        font-size: 13pt;
+        display: block;
+        margin-bottom: 4px;
+        color: #fff;
+    }
+    .logo-bloc {
+        text-align: right;
+    }
+    .logo-bloc img {
+        max-height: 70px;
+        max-width: 220px;
+    }
+    .logo-texte {
+        font-size: 20pt;
+        font-weight: bold;
+        color: #fff;
+    }
+    h1.titre-doc {
+        font-size: 22pt;
+        letter-spacing: 2px;
+        color: #1a1440;
+        margin: 20px 0 16px;
+    }
+    .blocs-info {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 24px;
+    }
+    .bloc {
+        width: 32%;
+    }
+    .bloc h3 {
+        font-size: 8.5pt;
+        text-transform: uppercase;
+        color: #777;
+        margin: 0 0 6px;
+        letter-spacing: 1px;
+    }
+    .bloc p {
+        margin: 0;
+        line-height: 1.5;
+    }
+    .meta-doc td {
+        padding: 1px 0;
+    }
+    .meta-doc td:first-child {
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 8.5pt;
+        color: #777;
+        padding-right: 10px;
+    }
+    table.lignes {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+    table.lignes thead th {
+        background: #1a1440;
+        color: #fff;
+        text-align: left;
+        font-size: 8.5pt;
+        text-transform: uppercase;
+        padding: 8px 10px;
+    }
+    table.lignes thead th.chiffre {
+        text-align: right;
+    }
+    table.lignes tbody td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #eee;
+    }
+    table.lignes tbody td.chiffre {
+        text-align: right;
+    }
+    .totaux {
+        width: 260px;
+        margin-left: auto;
+    }
+    .totaux table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .totaux td {
+        padding: 4px 0;
+        font-size: 10pt;
+    }
+    .totaux td.valeur {
+        text-align: right;
+    }
+    .totaux tr.total td {
+        border-top: 2px solid #1a1440;
+        font-weight: bold;
+        font-size: 12pt;
+        color: #1a1440;
+        padding-top: 8px;
+    }
+</style>
+</head>
+<body>
+    <div class="en-tete">
+        <div class="coordonnees-entreprise">
+            <strong>{{ coordonnees.nom_entreprise }}</strong>
+            {{ coordonnees.adresse }}<br>
+            {{ coordonnees.telephone }}<br>
+            {{ coordonnees.courriel }}<br>
+            {% if coordonnees.numero_tps %}N&deg; d'inscription &agrave; la TPS/TVH&nbsp;: {{ coordonnees.numero_tps }}<br>{% endif %}
+            {% if coordonnees.numero_tvq %}N&deg; d'enregistrement de la TVQ&nbsp;: {{ coordonnees.numero_tvq }}{% endif %}
+        </div>
+        <div class="logo-bloc">
+            {% if logo_uri %}
+                <img src="{{ logo_uri }}" alt="Logo">
+            {% else %}
+                <div class="logo-texte">{{ coordonnees.nom_entreprise }}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <h1 class="titre-doc">{{ type_label }}</h1>
+
+    <div class="blocs-info">
+        <div class="bloc">
+            <h3>Factur&eacute; &agrave;</h3>
+            <p>
+                {{ client.nom_entreprise }}<br>
+                {% if client.nom_contact %}{{ client.nom_contact }}<br>{% endif %}
+                {{ client.adresse }}<br>
+                {{ client.courriel }}
+            </p>
+        </div>
+        <div class="bloc">
+            <h3>Exp&eacute;di&eacute; &agrave;</h3>
+            <p>
+                {{ coordonnees.nom_entreprise }}<br>
+                {{ coordonnees.adresse }}
+            </p>
+        </div>
+        <div class="bloc">
+            <table class="meta-doc">
+                <tr><td>N&deg;</td><td>{{ document.numero }}</td></tr>
+                <tr><td>Date</td><td>{{ document.date_creation|date:"d/m/Y" }}</td></tr>
+                {% if document.date_echeance %}<tr><td>&Eacute;ch&eacute;ance</td><td>{{ document.date_echeance|date:"d/m/Y" }}</td></tr>{% endif %}
+            </table>
+        </div>
+    </div>
+
+    <table class="lignes">
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th class="chiffre">Qt&eacute;</th>
+                <th class="chiffre">Prix unitaire</th>
+                <th class="chiffre">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in lignes %}
+            <tr>
+                <td>{{ ligne.description }}</td>
+                <td class="chiffre">{{ ligne.quantite }}</td>
+                <td class="chiffre">{{ ligne.prix_unitaire }}&nbsp;$</td>
+                <td class="chiffre">{{ ligne.montant }}&nbsp;$</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totaux">
+        <table>
+            <tr><td>Sous-total</td><td class="valeur">{{ document.sous_total }}&nbsp;$</td></tr>
+            <tr><td>TPS (5%)</td><td class="valeur">{{ document.montant_tps }}&nbsp;$</td></tr>
+            <tr><td>TVQ (9,975%)</td><td class="valeur">{{ document.montant_tvq }}&nbsp;$</td></tr>
+            <tr class="total"><td>Total</td><td class="valeur">{{ document.total }}&nbsp;$</td></tr>
+        </table>
+    </div>
+</body>
+</html>

@@ -1,0 +1,28 @@
+# Secrets / environnement
+.env
+.env.*
+!.env.example
+
+# Python
+env/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+staticfiles/
+db.sqlite3
+
+# Média uploadé (persisté via volume en production, pas versionné)
+media/
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/npm-debug.log*
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
