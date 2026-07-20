@@ -62,10 +62,11 @@ export function apiUrlServer(path: string) {
   return `${base}${path}`;
 }
 
-// Utilisé côté client (navigateur) — passe par le port publié sur l'hôte.
+// Utilisé côté client (navigateur) — relatif, proxié même origine par next.config.ts (rewrites)
+// vers le backend. Garder ceci same-origin évite les soucis de cookies httpOnly
+// cross-domaine entre le frontend et le backend en production.
 export function apiUrlClient(path: string) {
-  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  return `${base}${path}`;
+  return path;
 }
 
 export async function fetchServer<T>(path: string, revalidate = 30): Promise<T> {
