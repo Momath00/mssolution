@@ -14,7 +14,9 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return [
-      { source: "/api/:path*", destination: `${apiUrlInternal}/api/:path*` },
+      // :path* drops the trailing slash on reconstruction, but every Django route
+      // here requires one (APPEND_SLASH=False) — append it explicitly.
+      { source: "/api/:path*", destination: `${apiUrlInternal}/api/:path*/` },
       { source: "/media/:path*", destination: `${apiUrlInternal}/media/:path*` },
     ];
   },
