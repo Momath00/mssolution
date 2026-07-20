@@ -1,6 +1,10 @@
 import SoumissionForm from '@/components/SoumissionForm';
 
-export const metadata = { title: 'Demander une soumission — MS Solution Informatique' };
+export const metadata = {
+  title: 'Demander une soumission',
+  description:
+    "Décrivez votre projet et recevez une soumission personnalisée de MS Solution Informatique pour votre site web ou votre plateforme applicative.",
+};
 
 export default function SoumissionPage() {
   return (

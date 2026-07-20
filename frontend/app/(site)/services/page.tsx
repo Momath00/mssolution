@@ -2,7 +2,11 @@ import Link from 'next/link';
 
 import Reveal from '@/components/Reveal';
 
-export const metadata = { title: 'Services — MS Solution Informatique' };
+export const metadata = {
+  title: 'Services',
+  description:
+    "Sites web sur mesure, plateformes applicatives, facturation, intégrations API et hébergement : découvrez les services de MS Solution Informatique pour votre entreprise.",
+};
 
 const services = [
   {

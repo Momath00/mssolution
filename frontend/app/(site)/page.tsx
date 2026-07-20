@@ -4,6 +4,12 @@ import Link from 'next/link';
 import Reveal from '@/components/Reveal';
 import { fetchServer, mediaUrl, type Realisation } from '@/lib/api';
 
+export const metadata = {
+  title: 'Développement de plateformes web sur mesure au Québec',
+  description:
+    "MS Solution Informatique conçoit, développe et maintient des sites web, portails clients et outils de gestion sur mesure pour les entreprises du Québec.",
+};
+
 const services = [
   {
     titre: 'Sites web sur mesure',

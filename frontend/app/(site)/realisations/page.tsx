@@ -3,7 +3,11 @@ import Image from 'next/image';
 import Reveal from '@/components/Reveal';
 import { fetchServer, mediaUrl, type Realisation } from '@/lib/api';
 
-export const metadata = { title: 'Réalisations — MS Solution Informatique' };
+export const metadata = {
+  title: 'Réalisations',
+  description:
+    "Découvrez les plateformes web, portails clients et sites sur mesure conçus par MS Solution Informatique pour ses clients.",
+};
 
 export default async function RealisationsPage() {
   let realisations: Realisation[] = [];

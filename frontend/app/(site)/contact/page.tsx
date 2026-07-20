@@ -1,6 +1,10 @@
 import ContactForm from '@/components/ContactForm';
 
-export const metadata = { title: 'Contact — MS Solution Informatique' };
+export const metadata = {
+  title: 'Contact',
+  description:
+    "Contactez MS Solution Informatique pour discuter de votre projet de site web ou de plateforme applicative sur mesure.",
+};
 
 export default function ContactPage() {
   return (
