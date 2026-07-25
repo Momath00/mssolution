@@ -41,6 +41,64 @@ body {
   animation: toast-in 0.25s ease-out;
 }
 
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-backdrop-in {
+  animation: backdrop-in 0.2s ease-out;
+}
+
+@keyframes modal-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-modal-pop {
+  animation: modal-pop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-pop-in {
+  animation: pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-view-in {
+  animation: view-in 0.2s ease-out;
+}
+
 @keyframes reveal-up {
   from {
     opacity: 0;
@@ -62,6 +120,10 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .animate-toast-in,
+  .animate-backdrop-in,
+  .animate-modal-pop,
+  .animate-pop-in,
+  .animate-view-in,
   .reveal.is-visible {
     animation: none;
     opacity: 1;

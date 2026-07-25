@@ -11,11 +11,11 @@ interface Props {
 export default function ConfirmDialog({ titre, message, enCours, onConfirm, onCancel }: Props) {
   return (
     <div
-      className="animate-toast-in fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
+      className="animate-backdrop-in fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl"
+        className="animate-modal-pop w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
         role="alertdialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
@@ -26,7 +26,7 @@ export default function ConfirmDialog({ titre, message, enCours, onConfirm, onCa
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-full px-4 py-2 text-sm font-semibold text-black/50 hover:bg-black/5"
+            className="rounded-full px-4 py-2 text-sm font-semibold text-black/50 transition-all hover:bg-black/5 active:scale-95"
           >
             Annuler
           </button>
@@ -34,7 +34,7 @@ export default function ConfirmDialog({ titre, message, enCours, onConfirm, onCa
             type="button"
             onClick={onConfirm}
             disabled={enCours}
-            className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+            className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 hover:shadow-md active:scale-95 disabled:opacity-60 disabled:active:scale-100"
           >
             {enCours ? 'Suppression…' : 'Supprimer'}
           </button>

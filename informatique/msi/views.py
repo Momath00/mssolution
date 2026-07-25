@@ -9,7 +9,7 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from .emails import envoyer_contact, envoyer_demande_soumission, envoyer_document
-from .models import Client, Coordonnees, Document, Realisation
+from .models import Client, Coordonnees, Document, Evenement, Realisation
 from .pdf import generer_pdf_document
 from .serializers import (
     ClientSerializer,
@@ -17,6 +17,7 @@ from .serializers import (
     CoordonneesSerializer,
     DemandeSoumissionSerializer,
     DocumentSerializer,
+    EvenementSerializer,
     RealisationSerializer,
 )
 
@@ -76,6 +77,15 @@ class DocumentViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{document.numero}.pdf"'
         return response
+
+
+class EvenementViewSet(viewsets.ModelViewSet):
+    serializer_class = EvenementSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = Evenement.objects.all()
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
 
 class CoordonneesView(APIView):

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Client, Coordonnees, Document, LigneDocument, Realisation
+from .models import Client, Coordonnees, Document, Evenement, LigneDocument, Realisation
 
 
 @admin.register(Realisation)
@@ -27,6 +27,13 @@ class DocumentAdmin(admin.ModelAdmin):
     list_filter = ('type_document', 'statut')
     search_fields = ('numero', 'client__nom_entreprise')
     inlines = [LigneDocumentInline]
+
+
+@admin.register(Evenement)
+class EvenementAdmin(admin.ModelAdmin):
+    list_display = ('titre', 'date', 'heure', 'type_evenement', 'termine')
+    list_filter = ('type_evenement', 'termine')
+    search_fields = ('titre', 'description')
 
 
 @admin.register(Coordonnees)

@@ -119,6 +119,29 @@ class LigneDocument(models.Model):
         return f'{self.description} ({self.document.numero})'
 
 
+class Evenement(models.Model):
+    TYPE_CHOICES = [
+        ('rendez_vous', 'Rendez-vous'),
+        ('tache', 'Tâche'),
+        ('rappel', 'Rappel'),
+    ]
+
+    titre = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    date = models.DateField()
+    heure = models.TimeField(null=True, blank=True)
+    type_evenement = models.CharField(max_length=20, choices=TYPE_CHOICES, default='tache')
+    termine = models.BooleanField(default=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date', 'heure']
+
+    def __str__(self):
+        return f'{self.titre} ({self.date})'
+
+
 class Coordonnees(models.Model):
     """Singleton — une seule ligne existe toujours dans cette table (pk=1)."""
 

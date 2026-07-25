@@ -9,6 +9,7 @@ from .views import (
     DashboardStatsView,
     DemandeSoumissionView,
     DocumentViewSet,
+    EvenementViewSet,
     RealisationViewSet,
 )
 
@@ -16,6 +17,7 @@ router = DefaultRouter()
 router.register('realisations', RealisationViewSet, basename='realisation')
 router.register('clients', ClientViewSet, basename='client')
 router.register('documents', DocumentViewSet, basename='document')
+router.register('evenements', EvenementViewSet, basename='evenement')
 
 urlpatterns = [
     path('auth/token/', CookieTokenObtainPairView.as_view(), name='token_obtain_pair'),

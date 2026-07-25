@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Client, Coordonnees, Document, LigneDocument, Realisation
+from .models import Client, Coordonnees, Document, Evenement, LigneDocument, Realisation
 
 
 class RealisationSerializer(serializers.ModelSerializer):
@@ -68,6 +68,16 @@ class DocumentSerializer(serializers.ModelSerializer):
             for ligne_data in lignes_data:
                 LigneDocument.objects.create(document=instance, **ligne_data)
         return instance
+
+
+class EvenementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Evenement
+        fields = [
+            'id', 'titre', 'description', 'date', 'heure', 'type_evenement',
+            'termine', 'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
 
 
 class CoordonneesSerializer(serializers.ModelSerializer):

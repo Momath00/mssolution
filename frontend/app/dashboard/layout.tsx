@@ -56,6 +56,18 @@ const liens = [
     ),
   },
   {
+    href: '/dashboard/planificateur',
+    label: 'Planificateur',
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+        d="M6.75 3v2.25M17.25 3v2.25M3.75 8.25h16.5M5.25 5.25h13.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-12a1.5 1.5 0 0 1 1.5-1.5ZM8 12h.008v.008H8V12Zm4 0h.008v.008H12V12Zm4 0h.008v.008H16V12Zm-8 3.75h.008v.008H8v-.008Zm4 0h.008v.008H12v-.008Zm4 0h.008v.008H16v-.008Z"
+      />
+    ),
+  },
+  {
     href: '/dashboard/parametres',
     label: 'Paramètres',
     icon: (
@@ -74,6 +86,7 @@ const titres: Record<string, string> = {
   '/dashboard/realisations': 'Réalisations',
   '/dashboard/clients': 'Clients',
   '/dashboard/facturation': 'Facturation',
+  '/dashboard/planificateur': 'Planificateur',
   '/dashboard/parametres': 'Paramètres',
 };
 

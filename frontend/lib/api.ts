@@ -56,6 +56,19 @@ export interface DocumentFacturation {
   total: string;
 }
 
+export type TypeEvenement = 'rendez_vous' | 'tache' | 'rappel';
+
+export interface Evenement {
+  id: number;
+  titre: string;
+  description: string;
+  date: string;
+  heure: string | null;
+  type_evenement: TypeEvenement;
+  termine: boolean;
+  date_creation: string;
+}
+
 // Utilisé côté serveur (App Router : Server Components) — atteint le conteneur `web` directement.
 export function apiUrlServer(path: string) {
   const base = process.env.API_URL_INTERNAL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';

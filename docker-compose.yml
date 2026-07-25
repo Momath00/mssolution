@@ -31,6 +31,7 @@ services:
 
   celery:
     build: .
+    working_dir: /app
     command: celery -A informatique  worker -l info
     volumes:
       - .:/app
