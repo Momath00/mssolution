@@ -82,7 +82,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
 class EvenementViewSet(viewsets.ModelViewSet):
     serializer_class = EvenementSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Evenement.objects.all()
+    queryset = Evenement.objects.select_related('client')
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

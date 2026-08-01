@@ -132,6 +132,9 @@ class Evenement(models.Model):
     heure = models.TimeField(null=True, blank=True)
     type_evenement = models.CharField(max_length=20, choices=TYPE_CHOICES, default='tache')
     termine = models.BooleanField(default=False)
+    client = models.ForeignKey(
+        Client, on_delete=models.SET_NULL, null=True, blank=True, related_name='evenements',
+    )
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 

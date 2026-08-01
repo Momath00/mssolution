@@ -71,11 +71,13 @@ class DocumentSerializer(serializers.ModelSerializer):
 
 
 class EvenementSerializer(serializers.ModelSerializer):
+    client_nom = serializers.CharField(source='client.nom_entreprise', read_only=True, default=None)
+
     class Meta:
         model = Evenement
         fields = [
             'id', 'titre', 'description', 'date', 'heure', 'type_evenement',
-            'termine', 'date_creation',
+            'termine', 'client', 'client_nom', 'date_creation',
         ]
         read_only_fields = ['id', 'date_creation']
 

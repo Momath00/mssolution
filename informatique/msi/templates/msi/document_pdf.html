@@ -125,6 +125,17 @@
         color: #1a1440;
         padding-top: 8px;
     }
+    .paiement {
+        margin-top: 24px;
+        padding: 14px 16px;
+        background: #eef0f6;
+        border-radius: 8px;
+        font-size: 9.5pt;
+        line-height: 1.5;
+    }
+    .paiement strong {
+        color: #1a1440;
+    }
 </style>
 </head>
 <body>
@@ -178,7 +189,7 @@
         <thead>
             <tr>
                 <th>Description</th>
-                <th class="chiffre">Qt&eacute;</th>
+                <th class="chiffre">Heures</th>
                 <th class="chiffre">Prix unitaire</th>
                 <th class="chiffre">Montant</th>
             </tr>
@@ -203,5 +214,11 @@
             <tr class="total"><td>Total</td><td class="valeur">{{ document.total }}&nbsp;$</td></tr>
         </table>
     </div>
+
+    {% if document.type_document == 'facture' %}
+    <div class="paiement">
+        <strong>Paiement par virement Interac&nbsp;:</strong> Momath.Seck@mssolutioninformatique.com
+    </div>
+    {% endif %}
 </body>
 </html>

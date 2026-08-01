@@ -1,9 +1,24 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { fetchClient } from '@/lib/api';
+import { fetchClient, type Evenement, type TypeEvenement } from '@/lib/api';
 import RevenueChart from '@/components/RevenueChart';
+import { clientDotStyle } from '@/lib/clientColors';
+
+const TYPES_EVENEMENT: Record<TypeEvenement, { label: string; badge: string }> = {
+  rendez_vous: { label: 'Rendez-vous', badge: 'bg-rose-500/10 text-rose-600' },
+  tache: { label: 'Tâche', badge: 'bg-emerald-500/10 text-emerald-600' },
+  rappel: { label: 'Rappel', badge: 'bg-amber-500/10 text-amber-600' },
+};
+
+function toISODate(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 interface Stats {
   realisations_publiees: number;
@@ -63,18 +78,62 @@ const cartes: { cle: CleStatNumerique; label: string; suffixe?: string; icon: Re
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [evenements, setEvenements] = useState<Evenement[]>([]);
 
   useEffect(() => {
     fetchClient<Stats>('/api/dashboard/stats/')
       .then(setStats)
       .catch((e) => setErreur(e.message));
+
+    fetchClient<Evenement[]>('/api/evenements/')
+      .then(setEvenements)
+      .catch(() => {});
   }, []);
+
+  const aujourdhui = toISODate(new Date());
+  const evenementsAVenir = evenements
+    .filter((e) => !e.termine && e.date >= aujourdhui)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.heure ?? '99').localeCompare(b.heure ?? '99'))
+    .slice(0, 5);
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-navy">Vue d&apos;ensemble</h1>
 
       {erreur && <p className="mt-4 text-sm text-red-600">{erreur}</p>}
+
+      <div className="mt-6 rounded-xl border border-black/5 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-navy">Événements à venir</h2>
+          <Link href="/dashboard/planificateur" className="text-sm font-medium text-accent hover:underline">
+            Voir le planificateur
+          </Link>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2">
+          {evenementsAVenir.length === 0 && <p className="text-sm text-black/40">Rien de prévu pour le moment.</p>}
+          {evenementsAVenir.map((ev) => {
+            const date = new Date(`${ev.date}T00:00:00`);
+            const dateLabel = date.toLocaleDateString('fr-CA', { day: 'numeric', month: 'short' });
+            return (
+              <div key={ev.id} className="flex items-center gap-3 rounded-lg p-1.5">
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${TYPES_EVENEMENT[ev.type_evenement].badge}`}>
+                  {TYPES_EVENEMENT[ev.type_evenement].label}
+                </span>
+                {ev.client && <span className="h-2 w-2 shrink-0 rounded-full" style={clientDotStyle(ev.client) ?? undefined} />}
+                <p className="min-w-0 flex-1 truncate text-sm font-medium text-navy">
+                  {ev.titre}
+                  {ev.client_nom && <span className="ml-1.5 font-normal text-black/40">— {ev.client_nom}</span>}
+                </p>
+                <p className="shrink-0 text-xs text-black/40">
+                  {dateLabel}
+                  {ev.heure && ` · ${ev.heure.slice(0, 5)}`}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {cartes.map((carte) => (

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { fetchClient, type Evenement, type TypeEvenement } from '@/lib/api';
+import { fetchClient, type ClientEntreprise, type Evenement, type TypeEvenement } from '@/lib/api';
 
 const TYPES: { value: TypeEvenement; label: string }[] = [
   { value: 'rendez_vous', label: 'Rendez-vous' },
@@ -22,6 +22,11 @@ interface Props {
 export default function EvenementForm({ evenement, dateParDefaut, heureParDefaut, onDone, onCancel, onDelete }: Props) {
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [clients, setClients] = useState<ClientEntreprise[]>([]);
+
+  useEffect(() => {
+    fetchClient<ClientEntreprise[]>('/api/clients/').then(setClients).catch(() => {});
+  }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,11 +34,13 @@ export default function EvenementForm({ evenement, dateParDefaut, heureParDefaut
     setErreur(null);
     const form = e.currentTarget;
     const heure = (form.elements.namedItem('heure') as HTMLInputElement).value;
+    const client = (form.elements.namedItem('client') as HTMLSelectElement).value;
     const data = {
       titre: (form.elements.namedItem('titre') as HTMLInputElement).value,
       type_evenement: (form.elements.namedItem('type_evenement') as HTMLSelectElement).value,
       date: (form.elements.namedItem('date') as HTMLInputElement).value,
       heure: heure || null,
+      client: client || null,
       description: (form.elements.namedItem('description') as HTMLTextAreaElement).value,
     };
 
@@ -77,6 +84,20 @@ export default function EvenementForm({ evenement, dateParDefaut, heureParDefaut
               placeholder="Ex. Entrevue avec la comptable"
               className="w-full rounded-lg border border-black/25 px-4 py-2 text-sm transition-colors focus:border-navy focus:outline-none"
             />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-navy">Client (optionnel)</label>
+            <select
+              name="client"
+              defaultValue={evenement?.client ?? ''}
+              className="w-full rounded-lg border border-black/25 px-4 py-2 text-sm focus:border-navy focus:outline-none"
+            >
+              <option value="">Aucun</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.nom_entreprise}</option>
+              ))}
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

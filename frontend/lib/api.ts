@@ -66,6 +66,8 @@ export interface Evenement {
   heure: string | null;
   type_evenement: TypeEvenement;
   termine: boolean;
+  client: number | null;
+  client_nom: string | null;
   date_creation: string;
 }
 
