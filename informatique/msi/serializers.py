@@ -1,6 +1,15 @@
 from rest_framework import serializers
 
-from .models import Client, Coordonnees, Document, Evenement, LigneDocument, Realisation
+from .models import (
+    Client,
+    CompteGrandLivre,
+    Coordonnees,
+    Depense,
+    Document,
+    Evenement,
+    LigneDocument,
+    Realisation,
+)
 
 
 class RealisationSerializer(serializers.ModelSerializer):
@@ -87,8 +96,27 @@ class CoordonneesSerializer(serializers.ModelSerializer):
         model = Coordonnees
         fields = [
             'nom_entreprise', 'courriel', 'telephone', 'adresse', 'logo',
-            'numero_tps', 'numero_tvq',
+            'numero_tps', 'numero_tvq', 'courriel_comptable',
         ]
+
+
+class CompteGrandLivreSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompteGrandLivre
+        fields = ['id', 'nom', 'actif', 'ordre']
+
+
+class DepenseSerializer(serializers.ModelSerializer):
+    compte_grand_livre_nom = serializers.CharField(source='compte_grand_livre.nom', read_only=True)
+    total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Depense
+        fields = [
+            'id', 'date', 'fournisseur', 'description', 'sous_total', 'tps', 'tvq', 'total',
+            'compte_grand_livre', 'compte_grand_livre_nom', 'piece_jointe', 'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
 
 
 class ContactSerializer(serializers.Serializer):

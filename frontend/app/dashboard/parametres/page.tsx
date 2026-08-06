@@ -27,6 +27,7 @@ export default function ParametresPage() {
     formData.set('adresse', (form.elements.namedItem('adresse') as HTMLTextAreaElement).value);
     formData.set('numero_tps', (form.elements.namedItem('numero_tps') as HTMLInputElement).value);
     formData.set('numero_tvq', (form.elements.namedItem('numero_tvq') as HTMLInputElement).value);
+    formData.set('courriel_comptable', (form.elements.namedItem('courriel_comptable') as HTMLInputElement).value);
 
     const fichier = (form.elements.namedItem('logo') as HTMLInputElement).files?.[0];
     if (fichier) formData.set('logo', fichier);
@@ -110,6 +111,20 @@ export default function ParametresPage() {
               className="w-full rounded-lg border border-black/25 px-4 py-2 text-sm focus:border-navy focus:outline-none"
             />
           </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-navy">Courriel du comptable</label>
+          <input
+            name="courriel_comptable"
+            type="email"
+            defaultValue={coordonnees.courriel_comptable}
+            placeholder="comptable@exemple.com"
+            className="w-full rounded-lg border border-black/25 px-4 py-2 text-sm focus:border-navy focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-black/40">
+            Utilisé pour l&apos;envoi direct du rapport comptable trimestriel depuis l&apos;onglet Dépenses.
+          </p>
         </div>
 
         <div>

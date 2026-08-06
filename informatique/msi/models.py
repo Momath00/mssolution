@@ -155,6 +155,7 @@ class Coordonnees(models.Model):
     logo = models.ImageField(upload_to='coordonnees/', blank=True, null=True)
     numero_tps = models.CharField(max_length=30, blank=True)
     numero_tvq = models.CharField(max_length=30, blank=True)
+    courriel_comptable = models.EmailField(blank=True)
 
     def save(self, *args, **kwargs):
         self.pk = 1
@@ -170,3 +171,40 @@ class Coordonnees(models.Model):
 
     def __str__(self):
         return self.nom_entreprise
+
+
+class CompteGrandLivre(models.Model):
+    nom = models.CharField(max_length=150, unique=True)
+    actif = models.BooleanField(default=True)
+    ordre = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['ordre', 'nom']
+        verbose_name = 'Compte de grand livre'
+        verbose_name_plural = 'Comptes de grand livre'
+
+    def __str__(self):
+        return self.nom
+
+
+class Depense(models.Model):
+    date = models.DateField()
+    fournisseur = models.CharField(max_length=200)
+    description = models.CharField(max_length=300, blank=True)
+    sous_total = models.DecimalField(max_digits=10, decimal_places=2)
+    tps = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0'))
+    tvq = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0'))
+    compte_grand_livre = models.ForeignKey(CompteGrandLivre, on_delete=models.PROTECT, related_name='depenses')
+    piece_jointe = models.ImageField(upload_to='depenses/', blank=True, null=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-date_creation']
+
+    @property
+    def total(self):
+        return (self.sous_total + self.tps + self.tvq).quantize(Decimal('0.01'))
+
+    def __str__(self):
+        return f'{self.fournisseur} — {self.total}$ ({self.date})'

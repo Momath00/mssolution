@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from .models import Client, Coordonnees, Document, Evenement, LigneDocument, Realisation
+from .models import (
+    Client,
+    CompteGrandLivre,
+    Coordonnees,
+    Depense,
+    Document,
+    Evenement,
+    LigneDocument,
+    Realisation,
+)
 
 
 @admin.register(Realisation)
@@ -45,3 +54,17 @@ class CoordonneesAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(CompteGrandLivre)
+class CompteGrandLivreAdmin(admin.ModelAdmin):
+    list_display = ('nom', 'actif', 'ordre')
+    list_filter = ('actif',)
+    search_fields = ('nom',)
+
+
+@admin.register(Depense)
+class DepenseAdmin(admin.ModelAdmin):
+    list_display = ('fournisseur', 'date', 'sous_total', 'total', 'compte_grand_livre')
+    list_filter = ('compte_grand_livre',)
+    search_fields = ('fournisseur', 'description')

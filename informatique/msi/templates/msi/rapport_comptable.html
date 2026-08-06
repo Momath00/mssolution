@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+    @page {
+        size: Letter;
+        margin: 2cm 1.8cm;
+    }
+    body {
+        font-family: 'Helvetica', 'Arial', sans-serif;
+        font-size: 10.5pt;
+        color: #1a1a1a;
+    }
+    .en-tete {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #1a1440;
+        color: #fff;
+        padding: 20px 24px;
+        border-radius: 8px;
+        margin: -6px -6px 24px;
+    }
+    .coordonnees-entreprise {
+        font-size: 9pt;
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.75);
+    }
+    .coordonnees-entreprise strong {
+        font-size: 13pt;
+        display: block;
+        margin-bottom: 4px;
+        color: #fff;
+    }
+    .logo-bloc {
+        text-align: right;
+    }
+    .logo-bloc img {
+        max-height: 70px;
+        max-width: 220px;
+    }
+    .logo-texte {
+        font-size: 20pt;
+        font-weight: bold;
+        color: #fff;
+    }
+    h1.titre-doc {
+        font-size: 22pt;
+        letter-spacing: 1px;
+        color: #1a1440;
+        margin: 20px 0 2px;
+    }
+    p.sous-titre {
+        margin: 0 0 20px;
+        color: #777;
+        font-size: 9.5pt;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .cartes {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 26px;
+    }
+    .carte {
+        flex: 1;
+        background: #eef0f6;
+        border-radius: 10px;
+        padding: 14px 16px;
+    }
+    .carte h4 {
+        margin: 0 0 6px;
+        font-size: 8pt;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: #777;
+    }
+    .carte .valeur {
+        font-size: 15pt;
+        font-weight: bold;
+        color: #1a1440;
+    }
+    .carte.accent {
+        background: #1a1440;
+    }
+    .carte.accent h4 {
+        color: rgba(255, 255, 255, 0.6);
+    }
+    .carte.accent .valeur {
+        color: #fff;
+    }
+    h2.section {
+        font-size: 12.5pt;
+        color: #1a1440;
+        margin: 26px 0 10px;
+        padding-bottom: 6px;
+        border-bottom: 2px solid #1a1440;
+    }
+    table.lignes {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 6px;
+    }
+    table.lignes thead th {
+        background: #1a1440;
+        color: #fff;
+        text-align: left;
+        font-size: 8.5pt;
+        text-transform: uppercase;
+        padding: 8px 10px;
+    }
+    table.lignes thead th.chiffre {
+        text-align: right;
+    }
+    table.lignes tbody td {
+        padding: 7px 10px;
+        border-bottom: 1px solid #eee;
+        font-size: 9.5pt;
+    }
+    table.lignes tbody td.chiffre {
+        text-align: right;
+    }
+    table.lignes tbody tr:nth-child(even) {
+        background: #f9f9fb;
+    }
+    table.lignes tfoot td {
+        padding: 8px 10px;
+        font-weight: bold;
+        color: #1a1440;
+        border-top: 2px solid #1a1440;
+        font-size: 9.5pt;
+    }
+    .badge {
+        display: inline-block;
+        background: #eef0f6;
+        color: #1a1440;
+        border-radius: 20px;
+        padding: 2px 10px;
+        font-size: 8pt;
+        font-weight: bold;
+    }
+    .vide {
+        color: #999;
+        font-size: 9.5pt;
+        padding: 10px 0;
+    }
+    .sommaire-taxes {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 4px;
+    }
+    .sommaire-taxes th {
+        text-align: left;
+        font-size: 8.5pt;
+        text-transform: uppercase;
+        color: #777;
+        padding: 6px 10px;
+        border-bottom: 1px solid #ddd;
+    }
+    .sommaire-taxes td {
+        padding: 8px 10px;
+        text-align: right;
+        font-size: 10pt;
+        border-bottom: 1px solid #eee;
+    }
+    .sommaire-taxes td:first-child {
+        text-align: left;
+        font-weight: bold;
+        color: #1a1440;
+    }
+    .sommaire-taxes tr.solde td {
+        font-weight: bold;
+        color: #1a1440;
+        border-top: 2px solid #1a1440;
+        border-bottom: none;
+    }
+    .galerie {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 8px;
+    }
+    .photo {
+        width: 30%;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        overflow: hidden;
+        page-break-inside: avoid;
+    }
+    .photo img {
+        width: 100%;
+        height: 130px;
+        object-fit: cover;
+        display: block;
+    }
+    .photo .legende {
+        padding: 6px 8px;
+        font-size: 8pt;
+        line-height: 1.4;
+        color: #444;
+    }
+    .photo .legende strong {
+        color: #1a1440;
+    }
+</style>
+</head>
+<body>
+    <div class="en-tete">
+        <div class="coordonnees-entreprise">
+            <strong>{{ coordonnees.nom_entreprise }}</strong>
+            {{ coordonnees.adresse }}<br>
+            {{ coordonnees.telephone }}<br>
+            {{ coordonnees.courriel }}<br>
+            {% if coordonnees.numero_tps %}N&deg; d'inscription &agrave; la TPS/TVH&nbsp;: {{ coordonnees.numero_tps }}<br>{% endif %}
+            {% if coordonnees.numero_tvq %}N&deg; d'enregistrement de la TVQ&nbsp;: {{ coordonnees.numero_tvq }}{% endif %}
+        </div>
+        <div class="logo-bloc">
+            {% if logo_uri %}
+                <img src="{{ logo_uri }}" alt="Logo">
+            {% else %}
+                <div class="logo-texte">{{ coordonnees.nom_entreprise }}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <h1 class="titre-doc">Rapport comptable — T{{ trimestre }} {{ annee }}</h1>
+    <p class="sous-titre">P&eacute;riode du {{ debut|date:"d/m/Y" }} au {{ fin|date:"d/m/Y" }}</p>
+
+    <div class="cartes">
+        <div class="carte">
+            <h4>Ventes (pay&eacute;es)</h4>
+            <div class="valeur">{{ total_ventes }}&nbsp;$</div>
+        </div>
+        <div class="carte">
+            <h4>D&eacute;penses</h4>
+            <div class="valeur">{{ total_depenses }}&nbsp;$</div>
+        </div>
+        <div class="carte accent">
+            <h4>Solde TPS &agrave; remettre</h4>
+            <div class="valeur">{{ solde_tps }}&nbsp;$</div>
+        </div>
+        <div class="carte accent">
+            <h4>Solde TVQ &agrave; remettre</h4>
+            <div class="valeur">{{ solde_tvq }}&nbsp;$</div>
+        </div>
+    </div>
+
+    <h2 class="section">Ventes</h2>
+    {% if ventes %}
+    <table class="lignes">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>N&deg; facture</th>
+                <th>Client</th>
+                <th class="chiffre">Sous-total</th>
+                <th class="chiffre">TPS</th>
+                <th class="chiffre">TVQ</th>
+                <th class="chiffre">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for v in ventes %}
+            <tr>
+                <td>{{ v.date_creation|date:"d/m/Y" }}</td>
+                <td>{{ v.numero }}</td>
+                <td>{{ v.client.nom_entreprise }}</td>
+                <td class="chiffre">{{ v.sous_total }}&nbsp;$</td>
+                <td class="chiffre">{{ v.montant_tps }}&nbsp;$</td>
+                <td class="chiffre">{{ v.montant_tvq }}&nbsp;$</td>
+                <td class="chiffre">{{ v.total }}&nbsp;$</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="3">Total</td>
+                <td class="chiffre">{{ sous_total_ventes }}&nbsp;$</td>
+                <td class="chiffre">{{ tps_percue }}&nbsp;$</td>
+                <td class="chiffre">{{ tvq_percue }}&nbsp;$</td>
+                <td class="chiffre">{{ total_ventes }}&nbsp;$</td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <p class="vide">Aucune vente pay&eacute;e durant cette p&eacute;riode.</p>
+    {% endif %}
+
+    <h2 class="section">D&eacute;penses</h2>
+    {% if depenses %}
+    <table class="lignes">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Fournisseur</th>
+                <th>Compte de grand livre</th>
+                <th class="chiffre">Sous-total</th>
+                <th class="chiffre">TPS</th>
+                <th class="chiffre">TVQ</th>
+                <th class="chiffre">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in depenses %}
+            <tr>
+                <td>{{ d.date|date:"d/m/Y" }}</td>
+                <td>{{ d.fournisseur }}</td>
+                <td><span class="badge">{{ d.compte_grand_livre.nom }}</span></td>
+                <td class="chiffre">{{ d.sous_total }}&nbsp;$</td>
+                <td class="chiffre">{{ d.tps }}&nbsp;$</td>
+                <td class="chiffre">{{ d.tvq }}&nbsp;$</td>
+                <td class="chiffre">{{ d.total }}&nbsp;$</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="3">Total</td>
+                <td class="chiffre">{{ sous_total_depenses }}&nbsp;$</td>
+                <td class="chiffre">{{ tps_payee }}&nbsp;$</td>
+                <td class="chiffre">{{ tvq_payee }}&nbsp;$</td>
+                <td class="chiffre">{{ total_depenses }}&nbsp;$</td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <p class="vide">Aucune d&eacute;pense saisie durant cette p&eacute;riode.</p>
+    {% endif %}
+
+    <h2 class="section">Sommaire des taxes</h2>
+    <table class="sommaire-taxes">
+        <tr><th></th><th style="text-align:right;">Per&ccedil;u (ventes)</th><th style="text-align:right;">Pay&eacute; (d&eacute;penses)</th><th style="text-align:right;">&Agrave; payer (rembours&eacute;)</th></tr>
+        <tr>
+            <td>TPS</td>
+            <td>{{ tps_percue }}&nbsp;$</td>
+            <td>{{ tps_payee }}&nbsp;$</td>
+            <td>{{ solde_tps }}&nbsp;$</td>
+        </tr>
+        <tr class="solde">
+            <td>TVQ</td>
+            <td>{{ tvq_percue }}&nbsp;$</td>
+            <td>{{ tvq_payee }}&nbsp;$</td>
+            <td>{{ solde_tvq }}&nbsp;$</td>
+        </tr>
+    </table>
+
+    {% if photos %}
+    <h2 class="section">Pi&egrave;ces justificatives</h2>
+    <div class="galerie">
+        {% for p in photos %}
+        <div class="photo">
+            <img src="{{ p.uri }}" alt="Re&ccedil;u {{ p.depense.fournisseur }}">
+            <div class="legende">
+                <strong>{{ p.depense.fournisseur }}</strong><br>
+                {{ p.depense.date|date:"d/m/Y" }} &middot; {{ p.depense.montant }}&nbsp;$
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</body>
+</html>

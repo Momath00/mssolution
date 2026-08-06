@@ -20,6 +20,7 @@ export interface Coordonnees {
   logo: string | null;
   numero_tps: string;
   numero_tvq: string;
+  courriel_comptable: string;
 }
 
 export interface ClientEntreprise {
@@ -54,6 +55,28 @@ export interface DocumentFacturation {
   montant_tps: string;
   montant_tvq: string;
   total: string;
+}
+
+export interface CompteGrandLivre {
+  id: number;
+  nom: string;
+  actif: boolean;
+  ordre: number;
+}
+
+export interface Depense {
+  id: number;
+  date: string;
+  fournisseur: string;
+  description: string;
+  sous_total: string;
+  tps: string;
+  tvq: string;
+  total: string;
+  compte_grand_livre: number;
+  compte_grand_livre_nom: string;
+  piece_jointe: string | null;
+  date_creation: string;
 }
 
 export type TypeEvenement = 'rendez_vous' | 'tache' | 'rappel';

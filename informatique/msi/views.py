@@ -3,19 +3,22 @@ from datetime import date
 from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
-from .emails import envoyer_contact, envoyer_demande_soumission, envoyer_document
-from .models import Client, Coordonnees, Document, Evenement, Realisation
-from .pdf import generer_pdf_document
+from .emails import envoyer_contact, envoyer_demande_soumission, envoyer_document, envoyer_rapport_comptable
+from .models import Client, CompteGrandLivre, Coordonnees, Depense, Document, Evenement, Realisation
+from .pdf import generer_pdf_document, generer_rapport_comptable
 from .serializers import (
     ClientSerializer,
+    CompteGrandLivreSerializer,
     ContactSerializer,
     CoordonneesSerializer,
     DemandeSoumissionSerializer,
+    DepenseSerializer,
     DocumentSerializer,
     EvenementSerializer,
     RealisationSerializer,
@@ -77,6 +80,21 @@ class DocumentViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{document.numero}.pdf"'
         return response
+
+
+class CompteGrandLivreViewSet(viewsets.ModelViewSet):
+    serializer_class = CompteGrandLivreSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = CompteGrandLivre.objects.all()
+
+
+class DepenseViewSet(viewsets.ModelViewSet):
+    serializer_class = DepenseSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = Depense.objects.select_related('compte_grand_livre')
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
 
 class EvenementViewSet(viewsets.ModelViewSet):
@@ -183,3 +201,40 @@ class DashboardStatsView(APIView):
             'chiffre_affaires_total': sum((doc.total for doc in chiffre_affaires_total), start=0),
             'revenu_par_mois': revenu_par_mois,
         })
+
+
+def _annee_trimestre(request):
+    try:
+        annee = int(request.query_params.get('annee', date.today().year))
+        trimestre = int(request.query_params.get('trimestre', (date.today().month - 1) // 3 + 1))
+    except (TypeError, ValueError):
+        raise ValidationError('Paramètres « annee » et « trimestre » invalides.')
+    if trimestre not in (1, 2, 3, 4):
+        raise ValidationError('Le trimestre doit être compris entre 1 et 4.')
+    return annee, trimestre
+
+
+class RapportComptableView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        annee, trimestre = _annee_trimestre(request)
+        pdf_bytes = generer_rapport_comptable(annee, trimestre)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="Rapport-comptable-T{trimestre}-{annee}.pdf"'
+        return response
+
+
+class RapportComptableEnvoyerView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        annee, trimestre = _annee_trimestre(request)
+        coordonnees = Coordonnees.load()
+        if not coordonnees.courriel_comptable:
+            raise ValidationError(
+                "Aucun courriel de comptable n'est configuré. Ajoutez-le dans Paramètres avant d'envoyer le rapport.",
+            )
+        pdf_bytes = generer_rapport_comptable(annee, trimestre)
+        envoyer_rapport_comptable(pdf_bytes, annee, trimestre)
+        return Response({'detail': 'ok'})

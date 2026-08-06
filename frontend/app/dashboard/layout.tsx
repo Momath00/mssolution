@@ -56,6 +56,18 @@ const liens = [
     ),
   },
   {
+    href: '/dashboard/depenses',
+    label: 'Dépenses',
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+        d="M2.25 8.25h19.5M2.25 8.25v10.5a1.5 1.5 0 0 0 1.5 1.5h16.5a1.5 1.5 0 0 0 1.5-1.5V8.25M2.25 8.25l2.47-4.94A1.5 1.5 0 0 1 6.07 2.5h11.86a1.5 1.5 0 0 1 1.35.81l2.47 4.94M8 13.5h3M8 16.5h8"
+      />
+    ),
+  },
+  {
     href: '/dashboard/planificateur',
     label: 'Planificateur',
     icon: (
@@ -86,6 +98,7 @@ const titres: Record<string, string> = {
   '/dashboard/realisations': 'Réalisations',
   '/dashboard/clients': 'Clients',
   '/dashboard/facturation': 'Facturation',
+  '/dashboard/depenses': 'Dépenses',
   '/dashboard/planificateur': 'Planificateur',
   '/dashboard/parametres': 'Paramètres',
 };

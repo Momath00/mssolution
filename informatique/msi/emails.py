@@ -191,3 +191,31 @@ def envoyer_document(document):
         'html': _gabarit_html(f'{type_label} {document.numero}', corps, coordonnees, logo),
         'attachments': attachments,
     })
+
+
+def envoyer_rapport_comptable(pdf_bytes, annee, trimestre):
+    coordonnees = Coordonnees.load()
+    logo = _piece_jointe_logo(coordonnees)
+
+    corps = (
+        f'<p>Bonjour,</p>'
+        f'<p>Veuillez trouver ci-joint le rapport comptable du trimestre '
+        f'<strong>T{trimestre} {annee}</strong> (ventes, d&eacute;penses, sommaire des taxes et pi&egrave;ces '
+        f'justificatives).</p>'
+    )
+
+    attachments = [{
+        'filename': f'Rapport-comptable-T{trimestre}-{annee}.pdf',
+        'content': base64.b64encode(pdf_bytes).decode('ascii'),
+    }]
+    if logo:
+        attachments.append(logo)
+
+    _client().Emails.send({
+        'from': settings.RESEND_FROM_FACTURE,
+        'to': [coordonnees.courriel_comptable],
+        'reply_to': settings.REPLY_TO_FACTURE,
+        'subject': f'Rapport comptable T{trimestre} {annee} — {coordonnees.nom_entreprise}',
+        'html': _gabarit_html(f'Rapport comptable T{trimestre} {annee}', corps, coordonnees, logo),
+        'attachments': attachments,
+    })
