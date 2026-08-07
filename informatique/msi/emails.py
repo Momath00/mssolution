@@ -32,8 +32,12 @@ def _piece_jointe_logo(coordonnees):
 
 def _gabarit_html(titre, corps_html, coordonnees, logo):
     entete_logo = (
-        f'<img src="cid:{logo["content_id"]}" alt="{coordonnees.nom_entreprise}" height="40" '
-        f'style="display:block;height:40px;">'
+        f'<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
+        f'<td><img src="cid:{logo["content_id"]}" alt="{coordonnees.nom_entreprise}" height="40" '
+        f'style="display:block;height:40px;"></td>'
+        f'<td style="padding-left:12px;vertical-align:middle;">'
+        f'<span style="color:#fff;font-size:18px;font-weight:bold;">{coordonnees.nom_entreprise}</span></td>'
+        f'</tr></table>'
         if logo
         else f'<span style="color:#fff;font-size:20px;font-weight:bold;">{coordonnees.nom_entreprise}</span>'
     )
@@ -158,6 +162,59 @@ def envoyer_demande_soumission(nom_entreprise, nom_contact, courriel, telephone,
     )
 
 
+def envoyer_soumission_refusee(document):
+    """Alerte l'équipe lorsqu'un client refuse une soumission — sans quoi le refus passerait inaperçu."""
+    coordonnees = Coordonnees.load()
+    logo = _piece_jointe_logo(coordonnees)
+    destinataire = settings.CONTACT_NOTIFICATION_EMAIL or settings.REPLY_TO_SOUMISSION
+
+    corps = (
+        f'<p><strong>{document.client.nom_entreprise}</strong> a refus&eacute; la soumission '
+        f'{document.numero} ({document.total}&nbsp;$).</p>'
+        f'<p>Contactez le client si vous souhaitez en discuter&nbsp;: {document.client.courriel}</p>'
+    )
+    payload = {
+        'from': settings.RESEND_FROM_SOUMISSION,
+        'to': [destinataire],
+        'reply_to': settings.REPLY_TO_SOUMISSION,
+        'subject': f'Soumission refusée {document.numero} — {document.client.nom_entreprise}',
+        'html': _gabarit_html(f'Soumission refusée {document.numero}', corps, coordonnees, logo),
+    }
+    if logo:
+        payload['attachments'] = [logo]
+    _client().Emails.send(payload)
+
+
+def envoyer_confirmation_paiement(document):
+    """Confirme au client que son paiement a été reçu — preuve écrite avec le numéro de document."""
+    coordonnees = Coordonnees.load()
+    logo = _piece_jointe_logo(coordonnees)
+    est_facture = document.type_document == 'facture'
+    type_label = 'facture' if est_facture else 'soumission'
+    reply_to = settings.REPLY_TO_FACTURE if est_facture else settings.REPLY_TO_SOUMISSION
+
+    corps = (
+        f'<p>Bonjour {document.client.nom_entreprise},</p>'
+        f'<p>Nous confirmons que votre paiement pour la {type_label} <strong>{document.numero}</strong> '
+        f'a &eacute;t&eacute; re&ccedil;u par l&rsquo;&eacute;quipe {coordonnees.nom_entreprise}.</p>'
+        f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:20px;">'
+        f'<tr><td style="background:#16a34a;border-radius:8px;padding:12px 20px;">'
+        f'<span style="color:#fff;font-weight:bold;font-size:16px;">Montant re&ccedil;u&nbsp;: {document.total}&nbsp;$</span>'
+        f'</td></tr></table>'
+        f'<p style="margin-top:20px;">Merci de votre confiance.</p>'
+    )
+    payload = {
+        'from': settings.RESEND_FROM_PAIEMENT,
+        'to': [document.client.courriel],
+        'reply_to': reply_to,
+        'subject': f'Paiement reçu — {document.numero}',
+        'html': _gabarit_html(f'Paiement reçu — {document.numero}', corps, coordonnees, logo),
+    }
+    if logo:
+        payload['attachments'] = [logo]
+    _client().Emails.send(payload)
+
+
 def envoyer_document(document):
     coordonnees = Coordonnees.load()
     logo = _piece_jointe_logo(coordonnees)
@@ -167,6 +224,29 @@ def envoyer_document(document):
     from_email = settings.RESEND_FROM_FACTURE if est_facture else settings.RESEND_FROM_SOUMISSION
     reply_to = settings.REPLY_TO_FACTURE if est_facture else settings.REPLY_TO_SOUMISSION
 
+    lien_signature_html = ''
+    if not est_facture:
+        lien = f'{settings.SITE_URL}/soumission/{document.token}/'
+        lien_signature_html = (
+            f'<p style="margin-top:20px;">Pour accepter ou refuser cette soumission en ligne — l&rsquo;acceptation '
+            f'devient alors votre contrat officiel — cliquez sur un lien ci-dessous&nbsp;:</p>'
+            f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:8px;">'
+            f'<tr>'
+            f'<td style="background:#16a34a;border-radius:8px;">'
+            f'<a href="{lien}?reponse=accepter" style="display:inline-block;padding:12px 20px;color:#fff;'
+            f'font-weight:bold;font-size:14px;text-decoration:none;">Accepter la soumission</a>'
+            f'</td>'
+            f'<td style="width:12px;"></td>'
+            f'<td style="border:1px solid #ccc;border-radius:8px;">'
+            f'<a href="{lien}?reponse=refuser" style="display:inline-block;padding:12px 20px;color:#555;'
+            f'font-weight:bold;font-size:14px;text-decoration:none;">Refuser la soumission</a>'
+            f'</td>'
+            f'</tr></table>'
+            f'<p style="margin-top:8px;font-size:12px;color:#888;">Ces liens vous am&egrave;nent &agrave; la page '
+            f'de la soumission — aucune r&eacute;ponse n&rsquo;est enregistr&eacute;e sans votre confirmation '
+            f'explicite sur la page.</p>'
+        )
+
     corps = (
         f'<p>Bonjour {document.client.nom_entreprise},</p>'
         f'<p>Veuillez trouver ci-joint votre {type_label.lower()} n&deg; {document.numero}.</p>'
@@ -174,6 +254,7 @@ def envoyer_document(document):
         f'<tr><td style="background:{ACCENT};border-radius:8px;padding:12px 20px;">'
         f'<span style="color:#fff;font-weight:bold;font-size:16px;">Total&nbsp;: {document.total}&nbsp;$</span>'
         f'</td></tr></table>'
+        f'{lien_signature_html}'
     )
 
     attachments = [{
@@ -189,6 +270,47 @@ def envoyer_document(document):
         'reply_to': reply_to,
         'subject': f'{type_label} {document.numero}',
         'html': _gabarit_html(f'{type_label} {document.numero}', corps, coordonnees, logo),
+        'attachments': attachments,
+    })
+
+
+def envoyer_contrat_signe(contrat):
+    """Transmet le contrat signé au client et au propriétaire — chacun reçoit la même preuve."""
+    coordonnees = Coordonnees.load()
+    logo = _piece_jointe_logo(coordonnees)
+    contrat.pdf.open('rb')
+    try:
+        pdf_bytes = contrat.pdf.read()
+    finally:
+        contrat.pdf.close()
+
+    corps = (
+        f'<p>Bonjour {contrat.nom_signataire},</p>'
+        f'<p>Merci ! Votre acceptation de la soumission {contrat.soumission.numero} a &eacute;t&eacute; '
+        f'enregistr&eacute;e — ce document devient votre contrat officiel. Vous le trouverez ci-joint.</p>'
+        f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:20px;">'
+        f'<tr><td style="background:{ACCENT};border-radius:8px;padding:12px 20px;">'
+        f'<span style="color:#fff;font-weight:bold;font-size:16px;">Total&nbsp;: {contrat.total}&nbsp;$</span>'
+        f'</td></tr></table>'
+    )
+
+    attachments = [{
+        'filename': f'Soumission_{contrat.soumission.numero}.pdf',
+        'content': base64.b64encode(pdf_bytes).decode('ascii'),
+    }]
+    if logo:
+        attachments.append(logo)
+
+    destinataires = [contrat.courriel_signataire]
+    if settings.CONTACT_NOTIFICATION_EMAIL and settings.CONTACT_NOTIFICATION_EMAIL not in destinataires:
+        destinataires.append(settings.CONTACT_NOTIFICATION_EMAIL)
+
+    _client().Emails.send({
+        'from': settings.RESEND_FROM_SOUMISSION,
+        'to': destinataires,
+        'reply_to': settings.REPLY_TO_SOUMISSION,
+        'subject': f'Soumission acceptée {contrat.soumission.numero} — {contrat.client_nom}',
+        'html': _gabarit_html(f'Soumission acceptée {contrat.soumission.numero}', corps, coordonnees, logo),
         'attachments': attachments,
     })
 

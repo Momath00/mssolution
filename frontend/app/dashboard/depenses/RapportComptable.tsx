@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 
-import { apiUrlClient, fetchClient, type Coordonnees } from '@/lib/api';
+import { apiUrlClient, fetchClient, type Coordonnees, type RapportComptableArchive } from '@/lib/api';
 import { afficherToast } from '@/components/Toast';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 const trimestres = [
   { valeur: 1, label: 'T1 — janv. à mars' },
@@ -22,9 +23,17 @@ export default function RapportComptable() {
   const [coordonnees, setCoordonnees] = useState<Coordonnees | null>(null);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [archives, setArchives] = useState<RapportComptableArchive[]>([]);
+  const [aSupprimer, setASupprimer] = useState<RapportComptableArchive | null>(null);
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
+
+  function chargerArchives() {
+    fetchClient<RapportComptableArchive[]>('/api/rapports-comptables/').then(setArchives).catch(() => {});
+  }
 
   useEffect(() => {
     fetchClient<Coordonnees>('/api/coordonnees/').then(setCoordonnees).catch(() => {});
+    chargerArchives();
   }, []);
 
   const lienPdf = apiUrlClient(`/api/rapport-comptable/?annee=${annee}&trimestre=${trimestre}`);
@@ -36,10 +45,26 @@ export default function RapportComptable() {
     try {
       await fetchClient(`/api/rapport-comptable/envoyer/?annee=${annee}&trimestre=${trimestre}`, { method: 'POST' });
       afficherToast(`Rapport T${trimestre} ${annee} envoyé à ${courrielComptable}.`);
+      chargerArchives();
     } catch (e) {
       setErreur(e instanceof Error ? e.message : "Erreur lors de l'envoi.");
     } finally {
       setEnvoiEnCours(false);
+    }
+  }
+
+  async function confirmerSuppression() {
+    if (!aSupprimer) return;
+    setSuppressionEnCours(true);
+    try {
+      await fetchClient(`/api/rapports-comptables/${aSupprimer.id}/`, { method: 'DELETE' });
+      afficherToast(`Archive T${aSupprimer.trimestre} ${aSupprimer.annee} supprimée.`);
+      setArchives((prev) => prev.filter((a) => a.id !== aSupprimer.id));
+      setASupprimer(null);
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : 'Erreur lors de la suppression.');
+    } finally {
+      setSuppressionEnCours(false);
     }
   }
 
@@ -81,6 +106,7 @@ export default function RapportComptable() {
           href={lienPdf}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => setTimeout(chargerArchives, 1500)}
           className="rounded-full bg-accent px-6 py-3 text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95"
         >
           Télécharger le PDF
@@ -100,6 +126,53 @@ export default function RapportComptable() {
         <p className="mt-3 text-xs text-black/40">
           Aucun courriel de comptable configuré — ajoutez-en un dans Paramètres pour activer l&apos;envoi direct.
         </p>
+      )}
+
+      <div className="mt-10 border-t border-black/10 pt-6">
+        <h3 className="text-sm font-bold text-navy">Rapports archivés</h3>
+        <p className="mt-1 text-xs text-black/40">
+          Chaque génération ou envoi conserve une copie permanente ici, même si les ventes ou dépenses de la
+          période sont modifiées par la suite.
+        </p>
+
+        <div className="mt-4 flex flex-col gap-2">
+          {archives.length === 0 && <p className="text-sm text-black/40">Aucun rapport archivé pour le moment.</p>}
+          {archives.map((a) => (
+            <div key={a.id} className="flex items-center gap-3 rounded-lg border border-black/5 bg-white p-3 shadow-sm">
+              <p className="min-w-0 flex-1 text-sm font-medium text-navy">
+                T{a.trimestre} {a.annee}
+                <span className="ml-2 font-normal text-black/40">
+                  généré le {new Date(a.date_generation).toLocaleDateString('fr-CA')}
+                </span>
+              </p>
+              <a
+                href={apiUrlClient(`/api/rapports-comptables/${a.id}/pdf/`)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-sm font-semibold text-navy hover:underline"
+              >
+                Voir le PDF
+              </a>
+              <button
+                type="button"
+                onClick={() => setASupprimer(a)}
+                className="shrink-0 text-sm font-semibold text-black/40 hover:text-red-600"
+              >
+                Supprimer
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {aSupprimer && (
+        <ConfirmDialog
+          titre="Supprimer cette archive ?"
+          message={`Le rapport T${aSupprimer.trimestre} ${aSupprimer.annee} archivé sera supprimé définitivement. Vous pourrez toujours le régénérer depuis les données actuelles.`}
+          enCours={suppressionEnCours}
+          onConfirm={confirmerSuppression}
+          onCancel={() => setASupprimer(null)}
+        />
       )}
     </div>
   );

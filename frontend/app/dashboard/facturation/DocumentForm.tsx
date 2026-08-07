@@ -2,13 +2,21 @@
 
 import { useEffect, useState } from 'react';
 
-import { fetchClient, type ClientEntreprise, type DocumentFacturation, type LigneDocument } from '@/lib/api';
+import {
+  CATEGORIE_LABELS,
+  fetchClient,
+  type CategorieContrat,
+  type ClientEntreprise,
+  type DocumentFacturation,
+  type LigneDocument,
+} from '@/lib/api';
 
 const TPS_RATE = 0.05;
 const TVQ_RATE = 0.09975;
 
 interface Props {
   document: DocumentFacturation | null;
+  typeParDefaut?: 'soumission' | 'facture';
   onDone: () => void;
   onCancel: () => void;
 }
@@ -17,9 +25,12 @@ function ligneVide(): LigneDocument {
   return { description: '', quantite: '1', prix_unitaire: '0' };
 }
 
-export default function DocumentForm({ document, onDone, onCancel }: Props) {
+export default function DocumentForm({ document, typeParDefaut, onDone, onCancel }: Props) {
   const [clients, setClients] = useState<ClientEntreprise[]>([]);
-  const [typeDocument, setTypeDocument] = useState(document?.type_document || 'soumission');
+  const [typeDocument, setTypeDocument] = useState(document?.type_document || typeParDefaut || 'soumission');
+  const [categorie, setCategorie] = useState<CategorieContrat>(
+    (document?.categorie as CategorieContrat) || 'developpement',
+  );
   const [clientId, setClientId] = useState<string>(document ? String(document.client) : '');
   const [dateEcheance, setDateEcheance] = useState(document?.date_echeance || '');
   const [lignes, setLignes] = useState<LigneDocument[]>(document?.lignes.length ? document.lignes : [ligneVide()]);
@@ -54,6 +65,7 @@ export default function DocumentForm({ document, onDone, onCancel }: Props) {
 
     const payload = {
       type_document: typeDocument,
+      categorie: typeDocument === 'soumission' ? categorie : '',
       client: Number(clientId),
       date_echeance: dateEcheance || null,
       lignes: lignes.map((l) => ({
@@ -114,6 +126,24 @@ export default function DocumentForm({ document, onDone, onCancel }: Props) {
             />
           </div>
         </div>
+
+        {typeDocument === 'soumission' && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-navy">Catégorie de contrat</label>
+            <select
+              value={categorie}
+              onChange={(e) => setCategorie(e.target.value as CategorieContrat)}
+              className="w-full rounded-lg border border-black/25 px-4 py-2 text-sm focus:border-navy focus:outline-none"
+            >
+              {Object.entries(CATEGORIE_LABELS).map(([valeur, label]) => (
+                <option key={valeur} value={valeur}>{label}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-black/40">
+              Détermine les conditions générales du contrat généré si le client accepte cette soumission.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="mb-1 block text-sm font-medium text-navy">Client</label>

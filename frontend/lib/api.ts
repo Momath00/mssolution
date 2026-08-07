@@ -1,3 +1,10 @@
+export interface Page<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
 export type Statut = 'brouillon' | 'publie';
 
 export interface Realisation {
@@ -23,6 +30,13 @@ export interface Coordonnees {
   courriel_comptable: string;
 }
 
+export interface RapportComptableArchive {
+  id: number;
+  annee: number;
+  trimestre: number;
+  date_generation: string;
+}
+
 export interface ClientEntreprise {
   id: number;
   nom_entreprise: string;
@@ -41,20 +55,70 @@ export interface LigneDocument {
   montant?: string;
 }
 
+export type CategorieContrat = 'developpement' | 'maintenance' | 'fonctionnalite';
+
+export const CATEGORIE_LABELS: Record<CategorieContrat, string> = {
+  developpement: 'Développement de logiciel',
+  maintenance: 'Maintenance',
+  fonctionnalite: 'Ajout de fonctionnalité',
+};
+
+export type StatutDocument = 'brouillon' | 'envoyee' | 'acceptee' | 'refusee' | 'payee';
+
 export interface DocumentFacturation {
   id: number;
   numero: string;
   type_document: 'soumission' | 'facture';
+  categorie: CategorieContrat | '';
   client: number;
   client_nom: string;
-  statut: 'brouillon' | 'envoyee' | 'payee';
+  statut: StatutDocument;
   date_creation: string;
   date_echeance: string | null;
+  date_reponse: string | null;
   lignes: LigneDocument[];
   sous_total: string;
   montant_tps: string;
   montant_tvq: string;
   total: string;
+}
+
+export interface Contrat {
+  id: number;
+  numero: string;
+  categorie: CategorieContrat;
+  categorie_label: string;
+  soumission: number;
+  soumission_numero: string;
+  client_nom: string;
+  client_courriel: string;
+  total: string;
+  nom_signataire: string;
+  date_signature: string;
+  statut: 'actif' | 'annule';
+  pdf: string;
+}
+
+export interface ClauseContrat {
+  titre: string;
+  texte: string;
+}
+
+export interface SoumissionPublique {
+  numero: string;
+  client_nom: string;
+  categorie: CategorieContrat | '';
+  categorie_label: string;
+  statut: StatutDocument;
+  date_creation: string;
+  date_echeance: string | null;
+  date_reponse: string | null;
+  lignes: LigneDocument[];
+  sous_total: string;
+  montant_tps: string;
+  montant_tvq: string;
+  total: string;
+  conditions: ClauseContrat[];
 }
 
 export interface CompteGrandLivre {

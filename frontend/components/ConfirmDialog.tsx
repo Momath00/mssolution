@@ -4,11 +4,21 @@ interface Props {
   titre: string;
   message: string;
   enCours?: boolean;
+  labelConfirmer?: string;
+  labelEnCours?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export default function ConfirmDialog({ titre, message, enCours, onConfirm, onCancel }: Props) {
+export default function ConfirmDialog({
+  titre,
+  message,
+  enCours,
+  labelConfirmer = 'Supprimer',
+  labelEnCours = 'Suppression…',
+  onConfirm,
+  onCancel,
+}: Props) {
   return (
     <div
       className="animate-backdrop-in fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
@@ -36,7 +46,7 @@ export default function ConfirmDialog({ titre, message, enCours, onConfirm, onCa
             disabled={enCours}
             className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 hover:shadow-md active:scale-95 disabled:opacity-60 disabled:active:scale-100"
           >
-            {enCours ? 'Suppression…' : 'Supprimer'}
+            {enCours ? labelEnCours : labelConfirmer}
           </button>
         </div>
       </div>

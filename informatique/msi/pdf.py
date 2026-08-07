@@ -5,7 +5,7 @@ from pathlib import Path
 from django.template.loader import render_to_string
 from weasyprint import HTML
 
-from .models import Coordonnees, Depense, Document
+from .models import CATEGORIE_CONTRAT_CHOICES, Coordonnees, Depense, Document
 
 
 def generer_pdf_document(document):
@@ -18,6 +18,19 @@ def generer_pdf_document(document):
         'coordonnees': coordonnees,
         'logo_uri': logo_uri,
         'type_label': 'FACTURE' if document.type_document == 'facture' else 'SOUMISSION',
+    })
+    return HTML(string=html).write_pdf()
+
+
+def generer_pdf_contrat(contrat):
+    coordonnees = Coordonnees.load()
+    logo_uri = Path(coordonnees.logo.path).as_uri() if coordonnees.logo else None
+    categorie_label = dict(CATEGORIE_CONTRAT_CHOICES).get(contrat.categorie, contrat.categorie)
+    html = render_to_string('msi/contrat_pdf.html', {
+        'contrat': contrat,
+        'coordonnees': coordonnees,
+        'logo_uri': logo_uri,
+        'categorie_label': categorie_label,
     })
     return HTML(string=html).write_pdf()
 
@@ -40,10 +53,12 @@ def generer_rapport_comptable(annee, trimestre):
     logo_uri = Path(coordonnees.logo.path).as_uri() if coordonnees.logo else None
     debut, fin = _bornes_trimestre(annee, trimestre)
 
+    # « payee » peu importe le type : une soumission acceptée et payée directement (sans
+    # facture séparée) est une vente au même titre qu'une facture réglée.
     ventes = list(
         Document.objects.filter(
-            type_document='facture', statut='payee', date_creation__date__gte=debut, date_creation__date__lt=fin,
-        ).select_related('client').order_by('date_creation')
+            statut='payee', date_creation__date__gte=debut, date_creation__date__lt=fin,
+        ).select_related('client').prefetch_related('lignes').order_by('date_creation')
     )
     depenses = list(
         Depense.objects.filter(date__gte=debut, date__lt=fin)

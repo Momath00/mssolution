@@ -20,6 +20,15 @@ function toISODate(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
+interface SoumissionRecente {
+  id: number;
+  numero: string;
+  client_nom: string;
+  statut: 'acceptee' | 'refusee' | 'payee';
+  date_reponse: string | null;
+  total: string;
+}
+
 interface Stats {
   realisations_publiees: number;
   factures_totales: number;
@@ -28,7 +37,15 @@ interface Stats {
   clients_actifs: number;
   chiffre_affaires_total: number;
   revenu_par_mois: { mois: string; total: number }[];
+  soumissions_en_attente: number;
+  soumissions_recentes: SoumissionRecente[];
 }
+
+const STATUT_SOUMISSION: Record<'acceptee' | 'refusee' | 'payee', { label: string; badge: string }> = {
+  acceptee: { label: 'Acceptée', badge: 'bg-green-100 text-green-700' },
+  refusee: { label: 'Refusée', badge: 'bg-red-100 text-red-700' },
+  payee: { label: 'Reçue', badge: 'bg-green-100 text-green-700' },
+};
 
 type CleStatNumerique = Exclude<keyof Stats, 'revenu_par_mois'>;
 
@@ -102,7 +119,7 @@ export default function DashboardPage() {
 
       {erreur && <p className="mt-4 text-sm text-red-600">{erreur}</p>}
 
-      <div className="mt-6 rounded-xl border border-black/5 bg-white p-6 shadow-sm">
+      <div className="mt-6 rounded-xl border border-blue-100 border-l-4 border-l-blue-400 bg-gradient-to-br from-blue-50 to-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold text-navy">Événements à venir</h2>
           <Link href="/dashboard/planificateur" className="text-sm font-medium text-accent hover:underline">
@@ -132,6 +149,42 @@ export default function DashboardPage() {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-green-100 border-l-4 border-l-green-400 bg-gradient-to-br from-green-50 to-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-navy">
+            Réponses aux soumissions
+            {stats && stats.soumissions_en_attente > 0 && (
+              <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                {stats.soumissions_en_attente} en attente
+              </span>
+            )}
+          </h2>
+          <Link href="/dashboard/facturation" className="text-sm font-medium text-accent hover:underline">
+            Voir la facturation
+          </Link>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2">
+          {stats && stats.soumissions_recentes.length === 0 && (
+            <p className="text-sm text-black/40">Aucune réponse reçue pour le moment.</p>
+          )}
+          {stats?.soumissions_recentes.map((sou) => (
+            <div key={sou.id} className="flex items-center gap-3 rounded-lg p-1.5">
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${STATUT_SOUMISSION[sou.statut].badge}`}>
+                {STATUT_SOUMISSION[sou.statut].label}
+              </span>
+              <p className="min-w-0 flex-1 truncate text-sm font-medium text-navy">
+                {sou.numero}
+                <span className="ml-1.5 font-normal text-black/40">— {sou.client_nom}</span>
+              </p>
+              <p className="shrink-0 text-xs text-black/40">
+                {sou.date_reponse && new Date(sou.date_reponse).toLocaleDateString('fr-CA', { timeZone: 'UTC' })}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -1,13 +1,16 @@
 from rest_framework import serializers
 
+from .conditions_contrats import generer_conditions
 from .models import (
     Client,
     CompteGrandLivre,
+    Contrat,
     Coordonnees,
     Depense,
     Document,
     Evenement,
     LigneDocument,
+    RapportComptableArchive,
     Realisation,
 )
 
@@ -51,11 +54,11 @@ class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = [
-            'id', 'numero', 'type_document', 'client', 'client_nom', 'statut',
-            'date_creation', 'date_echeance', 'lignes',
+            'id', 'numero', 'type_document', 'categorie', 'client', 'client_nom', 'statut',
+            'date_creation', 'date_echeance', 'date_reponse', 'lignes',
             'sous_total', 'montant_tps', 'montant_tvq', 'total',
         ]
-        read_only_fields = ['id', 'numero', 'date_creation']
+        read_only_fields = ['id', 'numero', 'date_creation', 'date_reponse']
 
     def create(self, validated_data):
         lignes_data = validated_data.pop('lignes')
@@ -77,6 +80,69 @@ class DocumentSerializer(serializers.ModelSerializer):
             for ligne_data in lignes_data:
                 LigneDocument.objects.create(document=instance, **ligne_data)
         return instance
+
+
+class SoumissionPubliqueSerializer(serializers.ModelSerializer):
+    """Vue publique (par token) d'une soumission, sans exposer d'IDs internes ni le client complet."""
+
+    lignes = LigneDocumentSerializer(many=True, read_only=True)
+    client_nom = serializers.CharField(source='client.nom_entreprise', read_only=True)
+    categorie_label = serializers.CharField(source='get_categorie_display', read_only=True)
+    sous_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    montant_tps = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    montant_tvq = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    conditions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Document
+        fields = [
+            'numero', 'client_nom', 'categorie', 'categorie_label', 'statut',
+            'date_creation', 'date_echeance', 'date_reponse', 'lignes',
+            'sous_total', 'montant_tps', 'montant_tvq', 'total', 'conditions',
+        ]
+
+    def get_conditions(self, document):
+        return generer_conditions(document.categorie, numero_soumission=document.numero, total=str(document.total))
+
+
+class RepondreSoumissionSerializer(serializers.Serializer):
+    reponse = serializers.ChoiceField(choices=['acceptee', 'refusee'])
+    nom_signataire = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    accepte_conditions = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, data):
+        if data['reponse'] == 'acceptee':
+            if not data.get('nom_signataire', '').strip():
+                raise serializers.ValidationError(
+                    {'nom_signataire': 'Le nom complet du signataire est requis pour accepter.'}
+                )
+            if not data.get('accepte_conditions'):
+                raise serializers.ValidationError(
+                    {'accepte_conditions': 'Vous devez cocher que vous acceptez cette soumission et ses modalités.'}
+                )
+        return data
+
+
+class ContratSerializer(serializers.ModelSerializer):
+    categorie_label = serializers.CharField(source='get_categorie_display', read_only=True)
+    soumission_numero = serializers.CharField(source='soumission.numero', read_only=True)
+
+    class Meta:
+        model = Contrat
+        fields = [
+            'id', 'numero', 'categorie', 'categorie_label', 'soumission', 'soumission_numero',
+            'client_nom', 'client_courriel', 'total', 'nom_signataire', 'date_signature',
+            'statut', 'pdf',
+        ]
+        read_only_fields = fields
+
+
+class RapportComptableArchiveSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RapportComptableArchive
+        fields = ['id', 'annee', 'trimestre', 'date_generation']
+        read_only_fields = fields
 
 
 class EvenementSerializer(serializers.ModelSerializer):

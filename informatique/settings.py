@@ -42,6 +42,9 @@ RESEND_FROM_FACTURE = config(
 RESEND_FROM_SOUMISSION = config(
     'RESEND_FROM_SOUMISSION', default='MS Solution Informatique <soumission@mssi.mssolutioninformatique.com>'
 )
+RESEND_FROM_PAIEMENT = config(
+    'RESEND_FROM_PAIEMENT', default='MS Solution Informatique <paiement@mssi.mssolutioninformatique.com>'
+)
 REPLY_TO_CONTACT = config('REPLY_TO_CONTACT', default='contact@mssolutioninformatique.com')
 REPLY_TO_FACTURE = config('REPLY_TO_FACTURE', default='facture@mssolutioninformatique.com')
 REPLY_TO_SOUMISSION = config('REPLY_TO_SOUMISSION', default='soumission@mssolutioninformatique.com')
@@ -194,6 +197,11 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    # Sans taux configuré ici, AnonRateThrottle (contact, demande de soumission,
+    # consultation/réponse publique aux soumissions) ne limite rien du tout.
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/hour',
+    },
 }
 
 
@@ -202,6 +210,9 @@ CORS_ALLOWED_ORIGINS = config(
     default='http://localhost:3000',
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
+
+# URL publique du site (front-end) — utilisée pour construire le lien de signature envoyé au client.
+SITE_URL = config('SITE_URL', default='https://mssolutioninformatique.com')
 
 from datetime import timedelta
 

@@ -15,6 +15,7 @@ db.sqlite3
 
 # Média uploadé (persisté via volume en production, pas versionné)
 media/
+media_prive/
 
 # Node / Next.js
 frontend/node_modules/

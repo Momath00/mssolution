@@ -1,7 +1,10 @@
 from datetime import date
 
-from django.http import HttpResponse
-from rest_framework import status, viewsets
+from django.core.files.base import ContentFile
+from django.http import Http404, HttpResponse
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -9,19 +12,43 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
-from .emails import envoyer_contact, envoyer_demande_soumission, envoyer_document, envoyer_rapport_comptable
-from .models import Client, CompteGrandLivre, Coordonnees, Depense, Document, Evenement, Realisation
+from .contrats import creer_contrat
+from .emails import (
+    envoyer_confirmation_paiement,
+    envoyer_contact,
+    envoyer_contrat_signe,
+    envoyer_demande_soumission,
+    envoyer_document,
+    envoyer_rapport_comptable,
+    envoyer_soumission_refusee,
+)
+from .models import (
+    Client,
+    CompteGrandLivre,
+    Contrat,
+    Coordonnees,
+    Depense,
+    Document,
+    Evenement,
+    RapportComptableArchive,
+    Realisation,
+)
+from .pagination import PaginationStandard
 from .pdf import generer_pdf_document, generer_rapport_comptable
 from .serializers import (
     ClientSerializer,
     CompteGrandLivreSerializer,
     ContactSerializer,
+    ContratSerializer,
     CoordonneesSerializer,
     DemandeSoumissionSerializer,
     DepenseSerializer,
     DocumentSerializer,
     EvenementSerializer,
+    RapportComptableArchiveSerializer,
     RealisationSerializer,
+    RepondreSoumissionSerializer,
+    SoumissionPubliqueSerializer,
 )
 
 
@@ -60,10 +87,23 @@ class ClientViewSet(viewsets.ModelViewSet):
 class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Document.objects.select_related('client').prefetch_related('lignes')
+    pagination_class = PaginationStandard
+
+    def get_queryset(self):
+        queryset = Document.objects.select_related('client').prefetch_related('lignes')
+        type_document = self.request.query_params.get('type_document')
+        if type_document:
+            queryset = queryset.filter(type_document=type_document)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        ancien_statut = serializer.instance.statut
+        document = serializer.save()
+        if ancien_statut != 'payee' and document.statut == 'payee':
+            envoyer_confirmation_paiement(document)
 
     @action(detail=True, methods=['post'])
     def envoyer(self, request, pk=None):
@@ -82,6 +122,93 @@ class DocumentViewSet(viewsets.ModelViewSet):
         return response
 
 
+class SoumissionPubliqueView(APIView):
+    """Consultation publique d'une soumission par son token — utilisée sur la page de signature."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+    def get(self, request, token):
+        document = get_object_or_404(
+            Document.objects.select_related('client').prefetch_related('lignes'),
+            token=token, type_document='soumission',
+        )
+        return Response(SoumissionPubliqueSerializer(document).data)
+
+
+class SoumissionRepondreView(APIView):
+    """Acceptation ou refus public d'une soumission — crée le contrat signé si acceptée."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+    def post(self, request, token):
+        document = get_object_or_404(
+            Document.objects.select_related('client').prefetch_related('lignes'),
+            token=token, type_document='soumission',
+        )
+        if document.statut in ('acceptee', 'refusee'):
+            raise ValidationError('Cette soumission a déjà reçu une réponse.')
+        if document.statut == 'brouillon':
+            raise ValidationError("Cette soumission n'a pas encore été envoyée.")
+        if document.date_echeance and document.date_echeance < date.today():
+            raise ValidationError("Cette soumission a expiré et ne peut plus être signée.")
+
+        serializer = RepondreSoumissionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        if data['reponse'] == 'acceptee':
+            contrat = creer_contrat(document, request, data['nom_signataire'].strip())
+            envoyer_contrat_signe(contrat)
+        else:
+            document.statut = 'refusee'
+            document.date_reponse = timezone.now()
+            document.save(update_fields=['statut', 'date_reponse'])
+            envoyer_soumission_refusee(document)
+
+        document.refresh_from_db()
+        return Response(SoumissionPubliqueSerializer(document).data)
+
+
+class SoumissionContratPdfView(APIView):
+    """Téléchargement public du contrat signé — sécurisé par le token de la soumission, pas par authentification."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+    def get(self, request, token):
+        document = get_object_or_404(
+            Document.objects.select_related('contrat'), token=token, type_document='soumission',
+        )
+        if document.statut != 'acceptee' or not hasattr(document, 'contrat'):
+            raise Http404
+        contrat = document.contrat
+        response = HttpResponse(contrat.pdf.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{contrat.numero}.pdf"'
+        return response
+
+
+class ContratViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = ContratSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = Contrat.objects.select_related('soumission')
+
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        contrat = self.get_object()
+        response = HttpResponse(contrat.pdf.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{contrat.numero}.pdf"'
+        return response
+
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        contrat = self.get_object()
+        contrat.statut = 'annule' if contrat.statut == 'actif' else 'actif'
+        contrat.save(update_fields=['statut'])
+        return Response(self.get_serializer(contrat).data)
+
+
 class CompteGrandLivreViewSet(viewsets.ModelViewSet):
     serializer_class = CompteGrandLivreSerializer
     permission_classes = [IsAuthenticated]
@@ -91,6 +218,7 @@ class CompteGrandLivreViewSet(viewsets.ModelViewSet):
 class DepenseViewSet(viewsets.ModelViewSet):
     serializer_class = DepenseSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = PaginationStandard
     queryset = Depense.objects.select_related('compte_grand_livre')
 
     def perform_create(self, serializer):
@@ -172,23 +300,28 @@ class DashboardStatsView(APIView):
 
     def get(self, request):
         today = date.today()
+        # « payee » vaut revenu reçu peu importe le type — une soumission acceptée dont le
+        # client a payé directement (sans facture séparée) compte autant qu'une facture réglée.
         revenu_mois = Document.objects.filter(
-            type_document='facture',
             statut='payee',
             date_creation__year=today.year,
             date_creation__month=today.month,
         )
-        chiffre_affaires_total = Document.objects.filter(type_document='facture', statut='payee')
+        chiffre_affaires_total = Document.objects.filter(statut='payee')
 
         revenu_par_mois = []
         for (y, m) in _six_derniers_mois(today):
             docs_du_mois = Document.objects.filter(
-                type_document='facture', statut='payee', date_creation__year=y, date_creation__month=m,
+                statut='payee', date_creation__year=y, date_creation__month=m,
             )
             revenu_par_mois.append({
                 'mois': f'{MOIS_ABREGES[m - 1]} {y}',
                 'total': sum((doc.total for doc in docs_du_mois), start=0),
             })
+
+        soumissions_recentes = Document.objects.filter(
+            type_document='soumission', statut__in=['acceptee', 'refusee', 'payee'],
+        ).select_related('client').prefetch_related('lignes').order_by('-date_reponse')[:5]
 
         return Response({
             'realisations_publiees': Realisation.objects.filter(statut='publie').count(),
@@ -200,6 +333,20 @@ class DashboardStatsView(APIView):
             'clients_actifs': Client.objects.count(),
             'chiffre_affaires_total': sum((doc.total for doc in chiffre_affaires_total), start=0),
             'revenu_par_mois': revenu_par_mois,
+            'soumissions_en_attente': Document.objects.filter(
+                type_document='soumission', statut='envoyee',
+            ).count(),
+            'soumissions_recentes': [
+                {
+                    'id': doc.id,
+                    'numero': doc.numero,
+                    'client_nom': doc.client.nom_entreprise,
+                    'statut': doc.statut,
+                    'date_reponse': doc.date_reponse,
+                    'total': doc.total,
+                }
+                for doc in soumissions_recentes
+            ],
         })
 
 
@@ -214,12 +361,19 @@ def _annee_trimestre(request):
     return annee, trimestre
 
 
+def _archiver_rapport(annee, trimestre, pdf_bytes):
+    """Conserve (ou remplace) la copie archivée du rapport pour ce trimestre — voir en cas de litige/problème."""
+    archive, _ = RapportComptableArchive.objects.get_or_create(annee=annee, trimestre=trimestre)
+    archive.pdf.save(f'Rapport-comptable-T{trimestre}-{annee}.pdf', ContentFile(pdf_bytes), save=True)
+
+
 class RapportComptableView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         annee, trimestre = _annee_trimestre(request)
         pdf_bytes = generer_rapport_comptable(annee, trimestre)
+        _archiver_rapport(annee, trimestre, pdf_bytes)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="Rapport-comptable-T{trimestre}-{annee}.pdf"'
         return response
@@ -236,5 +390,30 @@ class RapportComptableEnvoyerView(APIView):
                 "Aucun courriel de comptable n'est configuré. Ajoutez-le dans Paramètres avant d'envoyer le rapport.",
             )
         pdf_bytes = generer_rapport_comptable(annee, trimestre)
+        _archiver_rapport(annee, trimestre, pdf_bytes)
         envoyer_rapport_comptable(pdf_bytes, annee, trimestre)
         return Response({'detail': 'ok'})
+
+
+class RapportComptableArchiveViewSet(
+    mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet,
+):
+    """
+    Lecture + suppression seulement — les archives sont produites automatiquement lors de la
+    génération/l'envoi d'un rapport (voir _archiver_rapport), jamais créées ni modifiées à la main.
+    """
+
+    serializer_class = RapportComptableArchiveSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = RapportComptableArchive.objects.all()
+
+    def perform_destroy(self, instance):
+        instance.pdf.delete(save=False)
+        instance.delete()
+
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        archive = self.get_object()
+        response = HttpResponse(archive.pdf.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="Rapport-comptable-T{archive.trimestre}-{archive.annee}.pdf"'
+        return response

@@ -1,8 +1,39 @@
+import uuid
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.db import models
 from django.utils import timezone
+
+
+CATEGORIE_CONTRAT_CHOICES = [
+    ('developpement', 'Développement de logiciel'),
+    ('maintenance', 'Maintenance'),
+    ('fonctionnalite', 'Ajout de fonctionnalité'),
+]
+
+class StockagePriveContrats(FileSystemStorage):
+    """
+    Stockage hors de MEDIA_ROOT : contrairement à media/ (servi publiquement sans
+    authentification, voir informatique/urls.py), ce dossier n'est exposé par aucune
+    route — les PDF de contrats (données personnelles : nom, courriel, IP) ne sont
+    accessibles que via l'action authentifiée ContratViewSet.pdf.
+
+    deconstruct() ne sérialise aucun argument dans les migrations : le chemin est
+    recalculé à partir de BASE_DIR à chaque exécution, pour rester correct que ce
+    soit en local (Windows) ou en production (conteneur Linux).
+    """
+
+    def __init__(self, **kwargs):
+        kwargs['location'] = str(settings.BASE_DIR / 'media_prive')
+        super().__init__(**kwargs)
+
+    def deconstruct(self):
+        return ('msi.models.StockagePriveContrats', [], {})
+
+
+stockage_prive = StockagePriveContrats()
 
 
 class Realisation(models.Model):
@@ -52,15 +83,20 @@ class Document(models.Model):
     STATUT_CHOICES = [
         ('brouillon', 'Brouillon'),
         ('envoyee', 'Envoyée'),
+        ('acceptee', 'Acceptée'),
+        ('refusee', 'Refusée'),
         ('payee', 'Payée'),
     ]
 
     numero = models.CharField(max_length=30, unique=True)
     type_document = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    categorie = models.CharField(max_length=20, choices=CATEGORIE_CONTRAT_CHOICES, blank=True)
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name='documents')
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='brouillon')
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_echeance = models.DateField(null=True, blank=True)
+    date_reponse = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:
@@ -208,3 +244,86 @@ class Depense(models.Model):
 
     def __str__(self):
         return f'{self.fournisseur} — {self.total}$ ({self.date})'
+
+
+class Contrat(models.Model):
+    """
+    Preuve figée à la signature d'une soumission acceptée. Les montants, lignes et
+    conditions sont copiés au moment de la signature et ne changent plus jamais, même
+    si la soumission d'origine est modifiée par la suite — c'est ce qui fait foi en cas
+    de litige, avec l'IP/horodatage de signature.
+    """
+
+    STATUT_CHOICES = [
+        ('actif', 'Actif'),
+        ('annule', 'Annulé'),
+    ]
+
+    soumission = models.OneToOneField(Document, on_delete=models.PROTECT, related_name='contrat')
+    numero = models.CharField(max_length=30, unique=True)
+    categorie = models.CharField(max_length=20, choices=CATEGORIE_CONTRAT_CHOICES)
+
+    client_nom = models.CharField(max_length=200)
+    client_courriel = models.EmailField()
+
+    lignes_json = models.JSONField(default=list)
+    sous_total = models.DecimalField(max_digits=12, decimal_places=2)
+    montant_tps = models.DecimalField(max_digits=12, decimal_places=2)
+    montant_tvq = models.DecimalField(max_digits=12, decimal_places=2)
+    total = models.DecimalField(max_digits=12, decimal_places=2)
+
+    conditions_json = models.JSONField(default=list)
+
+    nom_signataire = models.CharField(max_length=200)
+    courriel_signataire = models.EmailField()
+    ip_signature = models.GenericIPAddressField()
+    user_agent_signature = models.CharField(max_length=500, blank=True)
+    date_signature = models.DateTimeField(auto_now_add=True)
+
+    pdf = models.FileField(upload_to='contrats/', storage=stockage_prive)
+    statut = models.CharField(max_length=10, choices=STATUT_CHOICES, default='actif')
+
+    class Meta:
+        ordering = ['-date_signature']
+
+    def __str__(self):
+        return self.numero
+
+    @classmethod
+    def generer_numero(cls):
+        base = f'CON-{timezone.now().year}-'
+        dernier = (
+            cls.objects.filter(numero__startswith=base)
+            .order_by('-numero')
+            .values_list('numero', flat=True)
+            .first()
+        )
+        prochain = 1
+        if dernier:
+            try:
+                prochain = int(dernier.rsplit('-', 1)[-1]) + 1
+            except ValueError:
+                prochain = 1
+        return f'{base}{prochain:04d}'
+
+
+class RapportComptableArchive(models.Model):
+    """
+    Copie archivée d'un rapport comptable généré pour un trimestre — conservée même si les
+    ventes/dépenses sous-jacentes changent plus tard (ex. dépense corrigée après coup), pour
+    qu'on retrouve toujours ce qui a été produit et envoyé à l'origine.
+    """
+
+    annee = models.PositiveIntegerField()
+    trimestre = models.PositiveSmallIntegerField()
+    pdf = models.FileField(upload_to='rapports-comptables/', storage=stockage_prive)
+    date_generation = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-annee', '-trimestre']
+        constraints = [
+            models.UniqueConstraint(fields=['annee', 'trimestre'], name='rapport_unique_par_periode'),
+        ]
+
+    def __str__(self):
+        return f'T{self.trimestre} {self.annee}'
