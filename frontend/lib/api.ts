@@ -155,6 +155,8 @@ export interface Evenement {
   termine: boolean;
   client: number | null;
   client_nom: string | null;
+  document: number | null;
+  document_numero: string | null;
   date_creation: string;
 }
 

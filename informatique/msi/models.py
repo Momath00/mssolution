@@ -171,6 +171,9 @@ class Evenement(models.Model):
     client = models.ForeignKey(
         Client, on_delete=models.SET_NULL, null=True, blank=True, related_name='evenements',
     )
+    document = models.ForeignKey(
+        Document, on_delete=models.SET_NULL, null=True, blank=True, related_name='evenements',
+    )
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 

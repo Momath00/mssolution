@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import { fetchClient, type ClientEntreprise, type Evenement, type TypeEvenement } from '@/lib/api';
+import { apiUrlClient, fetchClient, type ClientEntreprise, type Evenement, type TypeEvenement } from '@/lib/api';
 import { afficherToast } from '@/components/Toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { clientCardBorderStyle, clientColor, clientDotStyle } from '@/lib/clientColors';
@@ -459,7 +459,20 @@ function EvenementCarte({
       )}
 
       <div className="mt-auto flex items-center justify-between pt-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-black/30">{type.label}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-black/30">{type.label}</span>
+          {ev.document && (
+            <a
+              href={apiUrlClient(`/api/documents/${ev.document}/pdf/`)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-[11px] font-semibold text-accent hover:underline"
+            >
+              Voir le PDF
+            </a>
+          )}
+        </div>
         <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             type="button"

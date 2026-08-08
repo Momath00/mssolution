@@ -2,7 +2,7 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 
 from .conditions_contrats import generer_conditions
-from .models import Contrat
+from .models import Contrat, Evenement
 from .pdf import generer_pdf_contrat
 
 
@@ -59,4 +59,28 @@ def creer_contrat(document, request, nom_signataire):
     document.date_reponse = timezone.now()
     document.save(update_fields=['statut', 'date_reponse'])
 
+    _creer_evenement_contrat(document, contrat)
+
     return contrat
+
+
+def _creer_evenement_contrat(document, contrat):
+    """
+    Déverse le contenu de la soumission acceptée dans le planificateur, pour qu'il
+    apparaisse dans « Événements à venir » sans que quelqu'un ait à le ressaisir.
+    """
+    lignes = '\n'.join(
+        f'• {ligne["description"]} — {ligne["quantite"]} x {ligne["prix_unitaire"]}$ = {ligne["montant"]}$'
+        for ligne in contrat.lignes_json
+    )
+    description = f'{lignes}\n\nTotal : {contrat.total}$'
+
+    Evenement.objects.create(
+        titre=f'Contrat {contrat.numero} — {document.client.nom_entreprise}',
+        description=description,
+        date=document.date_echeance or timezone.localdate(),
+        type_evenement='tache',
+        client=document.client,
+        document=document,
+        created_by=document.created_by,
+    )

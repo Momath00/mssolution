@@ -147,14 +147,15 @@ class RapportComptableArchiveSerializer(serializers.ModelSerializer):
 
 class EvenementSerializer(serializers.ModelSerializer):
     client_nom = serializers.CharField(source='client.nom_entreprise', read_only=True, default=None)
+    document_numero = serializers.CharField(source='document.numero', read_only=True, default=None)
 
     class Meta:
         model = Evenement
         fields = [
             'id', 'titre', 'description', 'date', 'heure', 'type_evenement',
-            'termine', 'client', 'client_nom', 'date_creation',
+            'termine', 'client', 'client_nom', 'document', 'document_numero', 'date_creation',
         ]
-        read_only_fields = ['id', 'date_creation']
+        read_only_fields = ['id', 'document', 'document_numero', 'date_creation']
 
 
 class CoordonneesSerializer(serializers.ModelSerializer):

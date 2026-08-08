@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { fetchClient, type Evenement, type TypeEvenement } from '@/lib/api';
+import { apiUrlClient, fetchClient, type Evenement, type TypeEvenement } from '@/lib/api';
 import RevenueChart from '@/components/RevenueChart';
 import { clientDotStyle } from '@/lib/clientColors';
 
@@ -146,6 +146,16 @@ export default function DashboardPage() {
                   {dateLabel}
                   {ev.heure && ` · ${ev.heure.slice(0, 5)}`}
                 </p>
+                {ev.document && (
+                  <a
+                    href={apiUrlClient(`/api/documents/${ev.document}/pdf/`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 text-xs font-semibold text-accent hover:underline"
+                  >
+                    PDF
+                  </a>
+                )}
               </div>
             );
           })}
