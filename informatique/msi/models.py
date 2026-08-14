@@ -320,6 +320,7 @@ class RapportComptableArchive(models.Model):
     annee = models.PositiveIntegerField()
     trimestre = models.PositiveSmallIntegerField()
     pdf = models.FileField(upload_to='rapports-comptables/', storage=stockage_prive)
+    excel = models.FileField(upload_to='rapports-comptables/', storage=stockage_prive, blank=True, default='')
     date_generation = models.DateTimeField(auto_now=True)
 
     class Meta:

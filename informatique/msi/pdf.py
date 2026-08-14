@@ -48,9 +48,8 @@ def _formater_solde(valeur):
     return f'{valeur:.2f}'
 
 
-def generer_rapport_comptable(annee, trimestre):
-    coordonnees = Coordonnees.load()
-    logo_uri = Path(coordonnees.logo.path).as_uri() if coordonnees.logo else None
+def _donnees_rapport_comptable(annee, trimestre):
+    """Ventes, dépenses et totaux d'un trimestre — source commune au rapport en PDF et en Excel."""
     debut, fin = _bornes_trimestre(annee, trimestre)
 
     # « payee » peu importe le type : une soumission acceptée et payée directement (sans
@@ -76,9 +75,24 @@ def generer_rapport_comptable(annee, trimestre):
     tvq_payee = sum((d.tvq for d in depenses), Decimal('0'))
     total_depenses = sum((d.total for d in depenses), Decimal('0'))
 
+    return {
+        'debut': debut, 'fin': fin,
+        'ventes': ventes, 'depenses': depenses,
+        'sous_total_ventes': sous_total_ventes, 'tps_percue': tps_percue,
+        'tvq_percue': tvq_percue, 'total_ventes': total_ventes,
+        'sous_total_depenses': sous_total_depenses, 'tps_payee': tps_payee,
+        'tvq_payee': tvq_payee, 'total_depenses': total_depenses,
+    }
+
+
+def generer_rapport_comptable(annee, trimestre):
+    coordonnees = Coordonnees.load()
+    logo_uri = Path(coordonnees.logo.path).as_uri() if coordonnees.logo else None
+    d = _donnees_rapport_comptable(annee, trimestre)
+
     photos = [
-        {'depense': d, 'uri': Path(d.piece_jointe.path).as_uri()}
-        for d in depenses if d.piece_jointe
+        {'depense': dep, 'uri': Path(dep.piece_jointe.path).as_uri()}
+        for dep in d['depenses'] if dep.piece_jointe
     ]
 
     html = render_to_string('msi/rapport_comptable.html', {
@@ -86,20 +100,20 @@ def generer_rapport_comptable(annee, trimestre):
         'logo_uri': logo_uri,
         'annee': annee,
         'trimestre': trimestre,
-        'debut': debut,
-        'fin': fin,
-        'ventes': ventes,
-        'depenses': depenses,
+        'debut': d['debut'],
+        'fin': d['fin'],
+        'ventes': d['ventes'],
+        'depenses': d['depenses'],
         'photos': photos,
-        'sous_total_ventes': sous_total_ventes,
-        'total_ventes': total_ventes,
-        'sous_total_depenses': sous_total_depenses,
-        'total_depenses': total_depenses,
-        'tps_percue': tps_percue,
-        'tvq_percue': tvq_percue,
-        'tps_payee': tps_payee,
-        'tvq_payee': tvq_payee,
-        'solde_tps': _formater_solde(tps_percue - tps_payee),
-        'solde_tvq': _formater_solde(tvq_percue - tvq_payee),
+        'sous_total_ventes': d['sous_total_ventes'],
+        'total_ventes': d['total_ventes'],
+        'sous_total_depenses': d['sous_total_depenses'],
+        'total_depenses': d['total_depenses'],
+        'tps_percue': d['tps_percue'],
+        'tvq_percue': d['tvq_percue'],
+        'tps_payee': d['tps_payee'],
+        'tvq_payee': d['tvq_payee'],
+        'solde_tps': _formater_solde(d['tps_percue'] - d['tps_payee']),
+        'solde_tvq': _formater_solde(d['tvq_percue'] - d['tvq_payee']),
     })
     return HTML(string=html).write_pdf()

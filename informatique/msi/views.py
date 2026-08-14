@@ -33,6 +33,7 @@ from .models import (
     RapportComptableArchive,
     Realisation,
 )
+from .excel import generer_excel_rapport_comptable
 from .pagination import PaginationStandard
 from .pdf import generer_pdf_document, generer_rapport_comptable
 from .serializers import (
@@ -361,10 +362,18 @@ def _annee_trimestre(request):
     return annee, trimestre
 
 
-def _archiver_rapport(annee, trimestre, pdf_bytes):
+def _archiver_rapport(annee, trimestre, pdf_bytes, excel_bytes):
     """Conserve (ou remplace) la copie archivée du rapport pour ce trimestre — voir en cas de litige/problème."""
     archive, _ = RapportComptableArchive.objects.get_or_create(annee=annee, trimestre=trimestre)
-    archive.pdf.save(f'Rapport-comptable-T{trimestre}-{annee}.pdf', ContentFile(pdf_bytes), save=True)
+    archive.pdf.save(f'Rapport-comptable-T{trimestre}-{annee}.pdf', ContentFile(pdf_bytes), save=False)
+    archive.excel.save(f'Rapport-comptable-T{trimestre}-{annee}.xlsx', ContentFile(excel_bytes), save=True)
+
+
+def _generer_et_archiver_rapport(annee, trimestre):
+    pdf_bytes = generer_rapport_comptable(annee, trimestre)
+    excel_bytes = generer_excel_rapport_comptable(annee, trimestre)
+    _archiver_rapport(annee, trimestre, pdf_bytes, excel_bytes)
+    return pdf_bytes, excel_bytes
 
 
 class RapportComptableView(APIView):
@@ -372,10 +381,22 @@ class RapportComptableView(APIView):
 
     def get(self, request):
         annee, trimestre = _annee_trimestre(request)
-        pdf_bytes = generer_rapport_comptable(annee, trimestre)
-        _archiver_rapport(annee, trimestre, pdf_bytes)
+        pdf_bytes, _ = _generer_et_archiver_rapport(annee, trimestre)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="Rapport-comptable-T{trimestre}-{annee}.pdf"'
+        return response
+
+
+class RapportComptableExcelView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        annee, trimestre = _annee_trimestre(request)
+        _, excel_bytes = _generer_et_archiver_rapport(annee, trimestre)
+        response = HttpResponse(
+            excel_bytes, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="Rapport-comptable-T{trimestre}-{annee}.xlsx"'
         return response
 
 
@@ -389,9 +410,8 @@ class RapportComptableEnvoyerView(APIView):
             raise ValidationError(
                 "Aucun courriel de comptable n'est configuré. Ajoutez-le dans Paramètres avant d'envoyer le rapport.",
             )
-        pdf_bytes = generer_rapport_comptable(annee, trimestre)
-        _archiver_rapport(annee, trimestre, pdf_bytes)
-        envoyer_rapport_comptable(pdf_bytes, annee, trimestre)
+        pdf_bytes, excel_bytes = _generer_et_archiver_rapport(annee, trimestre)
+        envoyer_rapport_comptable(pdf_bytes, excel_bytes, annee, trimestre)
         return Response({'detail': 'ok'})
 
 
@@ -409,6 +429,7 @@ class RapportComptableArchiveViewSet(
 
     def perform_destroy(self, instance):
         instance.pdf.delete(save=False)
+        instance.excel.delete(save=False)
         instance.delete()
 
     @action(detail=True, methods=['get'])
@@ -416,4 +437,17 @@ class RapportComptableArchiveViewSet(
         archive = self.get_object()
         response = HttpResponse(archive.pdf.read(), content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="Rapport-comptable-T{archive.trimestre}-{archive.annee}.pdf"'
+        return response
+
+    @action(detail=True, methods=['get'])
+    def excel(self, request, pk=None):
+        archive = self.get_object()
+        if not archive.excel:
+            raise Http404
+        response = HttpResponse(
+            archive.excel.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = (
+            f'attachment; filename="Rapport-comptable-T{archive.trimestre}-{archive.annee}.xlsx"'
+        )
         return response

@@ -15,6 +15,7 @@ from .views import (
     EvenementViewSet,
     RapportComptableArchiveViewSet,
     RapportComptableEnvoyerView,
+    RapportComptableExcelView,
     RapportComptableView,
     RealisationViewSet,
     SoumissionContratPdfView,
@@ -52,6 +53,7 @@ urlpatterns = [
     ),
     path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
     path('rapport-comptable/', RapportComptableView.as_view(), name='rapport-comptable'),
+    path('rapport-comptable/excel/', RapportComptableExcelView.as_view(), name='rapport-comptable-excel'),
     path('rapport-comptable/envoyer/', RapportComptableEnvoyerView.as_view(), name='rapport-comptable-envoyer'),
     path('', include(router.urls)),
 ]

@@ -37,6 +37,7 @@ export default function RapportComptable() {
   }, []);
 
   const lienPdf = apiUrlClient(`/api/rapport-comptable/?annee=${annee}&trimestre=${trimestre}`);
+  const lienExcel = apiUrlClient(`/api/rapport-comptable/excel/?annee=${annee}&trimestre=${trimestre}`);
   const courrielComptable = coordonnees?.courriel_comptable;
 
   async function envoyer() {
@@ -71,8 +72,9 @@ export default function RapportComptable() {
   return (
     <div>
       <p className="max-w-xl text-sm text-black/50">
-        Génère un rapport PDF moderne pour la période choisie&nbsp;: ventes, dépenses par compte de grand livre,
-        sommaire des taxes perçues/payées et les photos des factures jointes.
+        Génère un rapport pour la période choisie&nbsp;: ventes, dépenses par compte de grand livre, sommaire des
+        taxes perçues/payées et les photos des factures jointes. Disponible en PDF (avec pièces jointes) et en
+        Excel (onglets Ventes, Dépenses, Sommaire).
       </p>
 
       <div className="mt-6 flex max-w-md flex-wrap items-end gap-4">
@@ -111,6 +113,13 @@ export default function RapportComptable() {
         >
           Télécharger le PDF
         </a>
+        <a
+          href={lienExcel}
+          onClick={() => setTimeout(chargerArchives, 1500)}
+          className="rounded-full border border-green-700 px-6 py-3 text-sm font-semibold text-green-700 transition-all hover:bg-green-700 hover:text-white active:scale-95"
+        >
+          Télécharger le Excel
+        </a>
         <button
           type="button"
           onClick={envoyer}
@@ -125,6 +134,11 @@ export default function RapportComptable() {
       {!courrielComptable && coordonnees && (
         <p className="mt-3 text-xs text-black/40">
           Aucun courriel de comptable configuré — ajoutez-en un dans Paramètres pour activer l&apos;envoi direct.
+        </p>
+      )}
+      {courrielComptable && (
+        <p className="mt-3 text-xs text-black/40">
+          L&apos;envoi au comptable inclut automatiquement le PDF et le Excel.
         </p>
       )}
 
@@ -153,6 +167,14 @@ export default function RapportComptable() {
               >
                 Voir le PDF
               </a>
+              {a.a_excel && (
+                <a
+                  href={apiUrlClient(`/api/rapports-comptables/${a.id}/excel/`)}
+                  className="shrink-0 text-sm font-semibold text-green-700 hover:underline"
+                >
+                  Voir le Excel
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => setASupprimer(a)}

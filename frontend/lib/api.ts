@@ -35,6 +35,7 @@ export interface RapportComptableArchive {
   annee: number;
   trimestre: number;
   date_generation: string;
+  a_excel: boolean;
 }
 
 export interface ClientEntreprise {

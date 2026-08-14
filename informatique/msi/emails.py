@@ -315,7 +315,7 @@ def envoyer_contrat_signe(contrat):
     })
 
 
-def envoyer_rapport_comptable(pdf_bytes, annee, trimestre):
+def envoyer_rapport_comptable(pdf_bytes, excel_bytes, annee, trimestre):
     coordonnees = Coordonnees.load()
     logo = _piece_jointe_logo(coordonnees)
 
@@ -323,13 +323,19 @@ def envoyer_rapport_comptable(pdf_bytes, annee, trimestre):
         f'<p>Bonjour,</p>'
         f'<p>Veuillez trouver ci-joint le rapport comptable du trimestre '
         f'<strong>T{trimestre} {annee}</strong> (ventes, d&eacute;penses, sommaire des taxes et pi&egrave;ces '
-        f'justificatives).</p>'
+        f'justificatives), en format PDF et Excel.</p>'
     )
 
-    attachments = [{
-        'filename': f'Rapport-comptable-T{trimestre}-{annee}.pdf',
-        'content': base64.b64encode(pdf_bytes).decode('ascii'),
-    }]
+    attachments = [
+        {
+            'filename': f'Rapport-comptable-T{trimestre}-{annee}.pdf',
+            'content': base64.b64encode(pdf_bytes).decode('ascii'),
+        },
+        {
+            'filename': f'Rapport-comptable-T{trimestre}-{annee}.xlsx',
+            'content': base64.b64encode(excel_bytes).decode('ascii'),
+        },
+    ]
     if logo:
         attachments.append(logo)
 

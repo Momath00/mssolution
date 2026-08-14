@@ -139,10 +139,15 @@ class ContratSerializer(serializers.ModelSerializer):
 
 
 class RapportComptableArchiveSerializer(serializers.ModelSerializer):
+    a_excel = serializers.SerializerMethodField()
+
     class Meta:
         model = RapportComptableArchive
-        fields = ['id', 'annee', 'trimestre', 'date_generation']
+        fields = ['id', 'annee', 'trimestre', 'date_generation', 'a_excel']
         read_only_fields = fields
+
+    def get_a_excel(self, archive):
+        return bool(archive.excel)
 
 
 class EvenementSerializer(serializers.ModelSerializer):
