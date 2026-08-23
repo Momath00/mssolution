@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { apiUrlClient, fetchClient, type StatutDocument } from '@/lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -24,8 +24,6 @@ export default function ReponseSoumission({
 }: Props) {
   const [statut, setStatut] = useState(statutInitial);
   const [dateAffichee, setDateAffichee] = useState(dateReponse);
-  const [nomSignataire, setNomSignataire] = useState('');
-  const [accepteConditions, setAccepteConditions] = useState(false);
   const [demandeRefus, setDemandeRefus] = useState(intentionInitiale === 'refuser');
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -33,11 +31,6 @@ export default function ReponseSoumission({
   // Comparaison de chaînes ISO (AAAA-MM-JJ) plutôt que d'objets Date : évite tout écart de
   // fuseau horaire entre le rendu serveur et l'hydratation client (source d'un mismatch React).
   const expiree = statut === 'envoyee' && !!dateEcheance && dateEcheance < new Date().toISOString().slice(0, 10);
-
-  const nomSignataireRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (intentionInitiale === 'accepter') nomSignataireRef.current?.focus();
-  }, [intentionInitiale]);
 
   async function repondre(reponse: 'acceptee' | 'refusee') {
     setEnCours(true);
@@ -47,11 +40,8 @@ export default function ReponseSoumission({
         `/api/soumission-publique/${token}/repondre/`,
         {
           method: 'POST',
-          body: JSON.stringify({
-            reponse,
-            nom_signataire: nomSignataire,
-            accepte_conditions: accepteConditions,
-          }),
+          // Un seul clic sur « Accepter » vaut consentement — pas de case à cocher séparée.
+          body: JSON.stringify({ reponse, accepte_conditions: true }),
         },
       );
       setStatut(data.statut);
@@ -64,6 +54,14 @@ export default function ReponseSoumission({
     }
   }
 
+  // Venir du lien « Accepter » du courriel accepte directement, sans repasser par un clic
+  // supplémentaire sur la page — le clic dans le courriel est déjà le geste d'acceptation.
+  const acceptationAuto = intentionInitiale === 'accepter' && statut === 'envoyee' && !expiree;
+  useEffect(() => {
+    if (acceptationAuto) repondre('acceptee');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (statut === 'acceptee') {
     return (
       <div className="rounded-xl bg-green-50 p-6 text-green-800">
@@ -75,12 +73,6 @@ export default function ReponseSoumission({
           )}
           . Une copie de cette soumission, devenue votre contrat officiel, vous a été envoyée par courriel.
         </p>
-        {nomSignataire.trim() && (
-          <p className="mt-4 border-t border-green-800/15 pt-3 text-sm">
-            <span className="block text-xs uppercase tracking-wide text-green-700/70">Signé électroniquement par</span>
-            <span className="font-serif text-lg italic text-green-900">{nomSignataire.trim()}</span>
-          </p>
-        )}
         <a
           href={apiUrlClient(`/api/soumission-publique/${token}/contrat-pdf/`)}
           target="_blank"
@@ -127,6 +119,15 @@ export default function ReponseSoumission({
     );
   }
 
+  if (acceptationAuto && !erreur) {
+    return (
+      <div className="rounded-xl bg-black/[0.02] p-6 text-center text-black/60">
+        <p className="text-sm">Traitement de votre acceptation…</p>
+        {erreur && <p className="mt-2 text-sm text-red-600">{erreur}</p>}
+      </div>
+    );
+  }
+
   return (
     <div>
       <h2 className="text-xl font-bold text-navy">Votre réponse</h2>
@@ -136,30 +137,6 @@ export default function ReponseSoumission({
       </p>
 
       <div className="mt-5 flex flex-col gap-3 rounded-xl border border-black/10 bg-black/[0.02] p-5">
-        <div>
-          <label htmlFor="nom_signataire" className="mb-1 block text-sm font-medium text-navy">
-            Nom complet du signataire
-          </label>
-          <input
-            id="nom_signataire"
-            ref={nomSignataireRef}
-            value={nomSignataire}
-            onChange={(e) => setNomSignataire(e.target.value)}
-            placeholder="Ex. : Marie Tremblay"
-            className="w-full max-w-sm rounded-lg border border-black/25 px-4 py-2 text-sm focus:border-navy focus:outline-none"
-          />
-        </div>
-        <label className="flex items-start gap-2 text-sm text-black/70">
-          <input
-            type="checkbox"
-            checked={accepteConditions}
-            onChange={(e) => setAccepteConditions(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-green-600"
-          />
-          Je certifie avoir lu et j&apos;accepte cette soumission et ses modalités, en mon nom et au nom de
-          l&apos;entreprise que je représente. Ce document devient alors un contrat officiel entre les parties.
-        </label>
-
         <p className="flex items-start gap-2 text-xs text-black/50">
           <svg viewBox="0 0 20 20" fill="currentColor" className="mt-0.5 h-4 w-4 shrink-0">
             <path
@@ -177,11 +154,11 @@ export default function ReponseSoumission({
         <div className="mt-2 flex flex-wrap gap-3">
           <button
             type="button"
-            disabled={enCours || !nomSignataire.trim() || !accepteConditions}
+            disabled={enCours}
             onClick={() => repondre('acceptee')}
             className="rounded-full bg-green-600 px-6 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-40"
           >
-            {enCours ? 'Envoi…' : 'Accepter et signer'}
+            {enCours ? 'Envoi…' : 'Accepter la soumission'}
           </button>
           <button
             type="button"

@@ -50,6 +50,9 @@ class DocumentSerializer(serializers.ModelSerializer):
     montant_tps = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     montant_tvq = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    contrat_lie_numero = serializers.CharField(source='contrat_lie.numero', read_only=True, default=None)
+    contrat_id = serializers.SerializerMethodField()
+    solde_facturable = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -57,8 +60,25 @@ class DocumentSerializer(serializers.ModelSerializer):
             'id', 'numero', 'type_document', 'categorie', 'client', 'client_nom', 'statut',
             'date_creation', 'date_echeance', 'date_reponse', 'lignes',
             'sous_total', 'montant_tps', 'montant_tvq', 'total',
+            'pourcentage_acompte', 'type_paiement', 'contrat_lie', 'contrat_lie_numero',
+            'contrat_id', 'solde_facturable',
         ]
-        read_only_fields = ['id', 'numero', 'date_creation', 'date_reponse']
+        read_only_fields = ['id', 'numero', 'date_creation', 'date_reponse', 'type_paiement', 'contrat_lie']
+
+    def get_contrat_id(self, document):
+        contrat = getattr(document, 'contrat', None)
+        return contrat.id if contrat else None
+
+    def get_solde_facturable(self, document):
+        """Vrai sur une soumission acceptée avec acompte déjà facturé mais pas encore de solde
+        — sert à afficher/masquer le bouton « Facturer le solde » sans dupliquer cette règle
+        côté frontend."""
+        contrat = getattr(document, 'contrat', None)
+        if not contrat or not contrat.pourcentage_acompte:
+            return False
+        types = {f.type_paiement for f in contrat.factures_liees.all()}
+        return 'acompte' in types and 'solde' not in types
+        read_only_fields = ['id', 'numero', 'date_creation', 'date_reponse', 'type_paiement', 'contrat_lie']
 
     def create(self, validated_data):
         lignes_data = validated_data.pop('lignes')
@@ -100,40 +120,51 @@ class SoumissionPubliqueSerializer(serializers.ModelSerializer):
             'numero', 'client_nom', 'categorie', 'categorie_label', 'statut',
             'date_creation', 'date_echeance', 'date_reponse', 'lignes',
             'sous_total', 'montant_tps', 'montant_tvq', 'total', 'conditions',
+            'pourcentage_acompte',
         ]
 
     def get_conditions(self, document):
-        return generer_conditions(document.categorie, numero_soumission=document.numero, total=str(document.total))
+        return generer_conditions(
+            document.categorie, numero_soumission=document.numero, total=str(document.total),
+            pourcentage_acompte=document.pourcentage_acompte,
+        )
 
 
 class RepondreSoumissionSerializer(serializers.Serializer):
     reponse = serializers.ChoiceField(choices=['acceptee', 'refusee'])
     nom_signataire = serializers.CharField(max_length=200, required=False, allow_blank=True)
     accepte_conditions = serializers.BooleanField(required=False, default=False)
+    signature_image = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
-        if data['reponse'] == 'acceptee':
-            if not data.get('nom_signataire', '').strip():
-                raise serializers.ValidationError(
-                    {'nom_signataire': 'Le nom complet du signataire est requis pour accepter.'}
-                )
-            if not data.get('accepte_conditions'):
-                raise serializers.ValidationError(
-                    {'accepte_conditions': 'Vous devez cocher que vous acceptez cette soumission et ses modalités.'}
-                )
+        if data['reponse'] == 'acceptee' and not data.get('accepte_conditions'):
+            raise serializers.ValidationError(
+                {'accepte_conditions': 'Vous devez cocher que vous acceptez cette soumission et ses modalités.'}
+            )
         return data
+
+
+class FactureLieeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Document
+        fields = ['id', 'numero', 'type_paiement', 'statut', 'total', 'date_creation']
+        read_only_fields = fields
 
 
 class ContratSerializer(serializers.ModelSerializer):
     categorie_label = serializers.CharField(source='get_categorie_display', read_only=True)
     soumission_numero = serializers.CharField(source='soumission.numero', read_only=True)
+    montant_acompte = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    montant_solde = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    factures_liees = FactureLieeSerializer(many=True, read_only=True)
 
     class Meta:
         model = Contrat
         fields = [
             'id', 'numero', 'categorie', 'categorie_label', 'soumission', 'soumission_numero',
             'client_nom', 'client_courriel', 'total', 'nom_signataire', 'date_signature',
-            'statut', 'pdf',
+            'statut', 'pdf', 'pourcentage_acompte', 'montant_acompte', 'montant_solde',
+            'factures_liees',
         ]
         read_only_fields = fields
 

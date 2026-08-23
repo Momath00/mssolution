@@ -45,12 +45,28 @@ export default function FacturationDashboardPage() {
   const [majEnCours, setMajEnCours] = useState<number | null>(null);
   const [aSupprimer, setASupprimer] = useState<DocumentFacturation | null>(null);
   const [suppressionEnCours, setSuppressionEnCours] = useState(false);
+  const [facturationEnCours, setFacturationEnCours] = useState<number | null>(null);
+
+  async function facturerSolde(doc: DocumentFacturation) {
+    if (!doc.contrat_id) return;
+    setFacturationEnCours(doc.id);
+    try {
+      await fetchClient(`/api/contrats/${doc.contrat_id}/facturer-solde/`, { method: 'POST' });
+      afficherToast(`Facture de solde créée en brouillon pour ${doc.numero} — envoie-la depuis l'onglet Factures.`);
+      recharger();
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : 'Erreur lors de la facturation du solde.');
+    } finally {
+      setFacturationEnCours(null);
+    }
+  }
 
   async function envoyer(doc: DocumentFacturation) {
+    const reenvoi = doc.statut !== 'brouillon';
     setEnvoiEnCours(doc.id);
     try {
       await fetchClient(`/api/documents/${doc.id}/envoyer/`, { method: 'POST' });
-      afficherToast(`${doc.numero} envoyé au client avec succès.`);
+      afficherToast(`${doc.numero} ${reenvoi ? 'renvoyé' : 'envoyé'} au client avec succès.`);
       setDocuments((prev) => prev.map((d) => (d.id === doc.id ? { ...d, statut: 'envoyee' } : d)));
     } catch (e) {
       setErreur(e instanceof Error ? e.message : 'Erreur lors de l\'envoi.');
@@ -160,7 +176,15 @@ export default function FacturationDashboardPage() {
           documents.map((doc) => (
             <div key={doc.id} className="flex items-center gap-4 rounded-xl border border-black/5 bg-white p-4 shadow-sm">
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-navy">{doc.numero}</p>
+                <p className="flex flex-wrap items-center gap-2 font-semibold text-navy">
+                  {doc.numero}
+                  {doc.type_paiement !== 'complet' && (
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                      {doc.type_paiement === 'acompte' ? 'Acompte' : 'Solde'}
+                      {doc.contrat_lie_numero ? ` · ${doc.contrat_lie_numero}` : ''}
+                    </span>
+                  )}
+                </p>
                 <p className="truncate text-sm text-black/50">{doc.client_nom} · {doc.total} $</p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-0.5">
@@ -185,6 +209,15 @@ export default function FacturationDashboardPage() {
                   Reçue
                 </label>
               )}
+              {doc.solde_facturable && (
+                <button
+                  onClick={() => facturerSolde(doc)}
+                  disabled={facturationEnCours === doc.id}
+                  className="shrink-0 rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {facturationEnCours === doc.id ? 'Facturation…' : 'Facturer le solde'}
+                </button>
+              )}
               <a
                 href={apiUrlClient(`/api/documents/${doc.id}/pdf/`)}
                 target="_blank"
@@ -198,7 +231,7 @@ export default function FacturationDashboardPage() {
                 disabled={envoiEnCours === doc.id}
                 className="shrink-0 text-sm font-semibold text-accent hover:underline disabled:opacity-50"
               >
-                {envoiEnCours === doc.id ? 'Envoi…' : 'Envoyer au client'}
+                {envoiEnCours === doc.id ? 'Envoi…' : doc.statut === 'brouillon' ? 'Envoyer au client' : 'Renvoyer au client'}
               </button>
               <button
                 onClick={() => setEnEdition(doc)}

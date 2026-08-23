@@ -88,6 +88,12 @@ class Document(models.Model):
         ('payee', 'Payée'),
     ]
 
+    TYPE_PAIEMENT_CHOICES = [
+        ('complet', 'Complet'),
+        ('acompte', 'Acompte'),
+        ('solde', 'Solde'),
+    ]
+
     numero = models.CharField(max_length=30, unique=True)
     type_document = models.CharField(max_length=20, choices=TYPE_CHOICES)
     categorie = models.CharField(max_length=20, choices=CATEGORIE_CONTRAT_CHOICES, blank=True)
@@ -98,6 +104,19 @@ class Document(models.Model):
     date_echeance = models.DateField(null=True, blank=True)
     date_reponse = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+
+    # Sur une soumission : pourcentage d'acompte demandé si acceptée (ex. 35 pour un
+    # développement de logiciel). Vide/0 = paiement complet à l'acceptation, comme avant.
+    pourcentage_acompte = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Pourcentage d'acompte exigé à la signature (ex. 35). Laisser vide pour un paiement complet.",
+    )
+    # Sur une facture : type de paiement et contrat auquel elle se rattache — permet de
+    # relier une facture d'acompte et sa facture de solde pour le rapport comptable.
+    type_paiement = models.CharField(max_length=10, choices=TYPE_PAIEMENT_CHOICES, default='complet')
+    contrat_lie = models.ForeignKey(
+        'Contrat', on_delete=models.SET_NULL, null=True, blank=True, related_name='factures_liees',
+    )
 
     class Meta:
         ordering = ['-date_creation']
@@ -274,10 +293,15 @@ class Contrat(models.Model):
     montant_tps = models.DecimalField(max_digits=12, decimal_places=2)
     montant_tvq = models.DecimalField(max_digits=12, decimal_places=2)
     total = models.DecimalField(max_digits=12, decimal_places=2)
+    pourcentage_acompte = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
 
     conditions_json = models.JSONField(default=list)
 
     nom_signataire = models.CharField(max_length=200)
+    # Trait de signature dessiné à la main (souris/doigt) au moment de l'acceptation, stocké
+    # en data URI PNG — plus simple qu'un vrai fichier pour une image générée côté client et
+    # jamais réutilisée ailleurs (le PDF l'embarque directement).
+    signature_image = models.TextField(blank=True)
     courriel_signataire = models.EmailField()
     ip_signature = models.GenericIPAddressField()
     user_agent_signature = models.CharField(max_length=500, blank=True)
@@ -291,6 +315,21 @@ class Contrat(models.Model):
 
     def __str__(self):
         return self.numero
+
+    @property
+    def montant_acompte(self):
+        """Sous-total (avant taxes) de l'acompte — les taxes s'appliquent ensuite normalement
+        sur la facture d'acompte elle-même, donc son .total() correspond bien à ce pourcentage
+        du total taxes incluses du contrat."""
+        if not self.pourcentage_acompte:
+            return None
+        return (self.sous_total * self.pourcentage_acompte / Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def montant_solde(self):
+        if not self.pourcentage_acompte:
+            return None
+        return (self.sous_total - self.montant_acompte).quantize(Decimal('0.01'))
 
     @classmethod
     def generer_numero(cls):

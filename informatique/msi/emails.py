@@ -193,14 +193,29 @@ def envoyer_confirmation_paiement(document):
     type_label = 'facture' if est_facture else 'soumission'
     reply_to = settings.REPLY_TO_FACTURE if est_facture else settings.REPLY_TO_SOUMISSION
 
+    if document.type_paiement == 'acompte':
+        libelle_paiement = "votre acompte pour"
+    elif document.type_paiement == 'solde':
+        libelle_paiement = "le solde de"
+    else:
+        libelle_paiement = "votre paiement pour"
+
+    solde_html = ''
+    if document.type_paiement == 'acompte' and document.contrat_lie and document.contrat_lie.montant_solde:
+        solde_html = (
+            f'<p style="margin-top:12px;">Le solde de <strong>{document.contrat_lie.montant_solde}&nbsp;$</strong> '
+            f'(avant taxes) vous sera factur&eacute; &agrave; la livraison/mise en ligne du logiciel.</p>'
+        )
+
     corps = (
         f'<p>Bonjour {document.client.nom_entreprise},</p>'
-        f'<p>Nous confirmons que votre paiement pour la {type_label} <strong>{document.numero}</strong> '
+        f'<p>Nous confirmons que {libelle_paiement} la {type_label} <strong>{document.numero}</strong> '
         f'a &eacute;t&eacute; re&ccedil;u par l&rsquo;&eacute;quipe {coordonnees.nom_entreprise}.</p>'
         f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:20px;">'
         f'<tr><td style="background:#16a34a;border-radius:8px;padding:12px 20px;">'
         f'<span style="color:#fff;font-weight:bold;font-size:16px;">Montant re&ccedil;u&nbsp;: {document.total}&nbsp;$</span>'
         f'</td></tr></table>'
+        f'{solde_html}'
         f'<p style="margin-top:20px;">Merci de votre confiance.</p>'
     )
     payload = {
@@ -228,8 +243,8 @@ def envoyer_document(document):
     if not est_facture:
         lien = f'{settings.SITE_URL}/soumission/{document.token}/'
         lien_signature_html = (
-            f'<p style="margin-top:20px;">Pour accepter ou refuser cette soumission en ligne — l&rsquo;acceptation '
-            f'devient alors votre contrat officiel — cliquez sur un lien ci-dessous&nbsp;:</p>'
+            f'<p style="margin-top:20px;">Consultez le d&eacute;tail de la soumission, ou acceptez/refusez-la '
+            f'directement ci-dessous&nbsp;:</p>'
             f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:8px;">'
             f'<tr>'
             f'<td style="background:#16a34a;border-radius:8px;">'
@@ -238,24 +253,50 @@ def envoyer_document(document):
             f'</td>'
             f'<td style="width:12px;"></td>'
             f'<td style="border:1px solid #ccc;border-radius:8px;">'
-            f'<a href="{lien}?reponse=refuser" style="display:inline-block;padding:12px 20px;color:#555;'
+            f'<a href="{lien}?reponse=refuser" style="display:inline-block;padding:12px 18px;color:#555;'
             f'font-weight:bold;font-size:14px;text-decoration:none;">Refuser la soumission</a>'
             f'</td>'
             f'</tr></table>'
             f'<p style="margin-top:8px;font-size:12px;color:#888;">Ces liens vous am&egrave;nent &agrave; la page '
-            f'de la soumission — aucune r&eacute;ponse n&rsquo;est enregistr&eacute;e sans votre confirmation '
-            f'explicite sur la page.</p>'
+            f'de la soumission — l&rsquo;acceptation devient alors votre contrat officiel, et aucune '
+            f'r&eacute;ponse n&rsquo;est enregistr&eacute;e sans votre confirmation explicite sur la page.</p>'
         )
+
+    # Précise sans ambiguïté, sur une facture d'acompte ou de solde, à quelle soumission
+    # acceptée elle se rattache — évite qu'un client se demande pourquoi il reçoit une
+    # facture qu'il n'a pas explicitement redemandée.
+    paiement_info_html = ''
+    sous_titre = None
+    if est_facture and document.type_paiement in ('acompte', 'solde') and document.contrat_lie:
+        soumission_numero = document.contrat_lie.soumission.numero
+        if document.type_paiement == 'acompte':
+            sous_titre = 'Acompte'
+            paiement_info_html = (
+                f'<p style="margin-top:16px;">Cette facture est due pour la soumission '
+                f'<strong>{soumission_numero}</strong> que vous avez accept&eacute;e — il s&rsquo;agit de '
+                f'l&rsquo;<strong>acompte</strong> exigible &agrave; la signature.</p>'
+            )
+        else:
+            sous_titre = 'Solde'
+            paiement_info_html = (
+                f'<p style="margin-top:16px;">Cette facture est due pour la soumission '
+                f'<strong>{soumission_numero}</strong> que vous avez accept&eacute;e — il s&rsquo;agit du '
+                f'<strong>solde</strong> exigible &agrave; la livraison, l&rsquo;acompte ayant d&eacute;j&agrave; '
+                f'&eacute;t&eacute; factur&eacute;.</p>'
+            )
 
     corps = (
         f'<p>Bonjour {document.client.nom_entreprise},</p>'
         f'<p>Veuillez trouver ci-joint votre {type_label.lower()} n&deg; {document.numero}.</p>'
+        f'{paiement_info_html}'
         f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:20px;">'
         f'<tr><td style="background:{ACCENT};border-radius:8px;padding:12px 20px;">'
         f'<span style="color:#fff;font-weight:bold;font-size:16px;">Total&nbsp;: {document.total}&nbsp;$</span>'
         f'</td></tr></table>'
         f'{lien_signature_html}'
     )
+
+    sujet = f'{type_label} ({sous_titre}) {document.numero}' if sous_titre else f'{type_label} {document.numero}'
 
     attachments = [{
         'filename': f'{type_label}_{document.numero}.pdf',
@@ -268,8 +309,8 @@ def envoyer_document(document):
         'from': from_email,
         'to': [document.client.courriel],
         'reply_to': reply_to,
-        'subject': f'{type_label} {document.numero}',
-        'html': _gabarit_html(f'{type_label} {document.numero}', corps, coordonnees, logo),
+        'subject': sujet,
+        'html': _gabarit_html(sujet, corps, coordonnees, logo),
         'attachments': attachments,
     })
 

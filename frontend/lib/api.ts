@@ -82,6 +82,21 @@ export interface DocumentFacturation {
   montant_tps: string;
   montant_tvq: string;
   total: string;
+  pourcentage_acompte: string | null;
+  type_paiement: 'complet' | 'acompte' | 'solde';
+  contrat_lie: number | null;
+  contrat_lie_numero: string | null;
+  contrat_id: number | null;
+  solde_facturable: boolean;
+}
+
+export interface FactureLiee {
+  id: number;
+  numero: string;
+  type_paiement: 'complet' | 'acompte' | 'solde';
+  statut: 'brouillon' | 'envoyee' | 'acceptee' | 'refusee' | 'payee';
+  total: string;
+  date_creation: string;
 }
 
 export interface Contrat {
@@ -98,6 +113,10 @@ export interface Contrat {
   date_signature: string;
   statut: 'actif' | 'annule';
   pdf: string;
+  pourcentage_acompte: string | null;
+  montant_acompte: string | null;
+  montant_solde: string | null;
+  factures_liees: FactureLiee[];
 }
 
 export interface ClauseContrat {

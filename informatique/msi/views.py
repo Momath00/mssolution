@@ -1,6 +1,8 @@
+import logging
 from datetime import date
 
 from django.core.files.base import ContentFile
+from django.db.models import ProtectedError
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -12,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
-from .contrats import creer_contrat
+from .contrats import creer_contrat, creer_facture_solde
 from .emails import (
     envoyer_confirmation_paiement,
     envoyer_contact,
@@ -84,6 +86,15 @@ class ClientViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    def perform_destroy(self, instance):
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError(
+                'Impossible de supprimer ce client : il a des soumissions ou factures associées. '
+                'Supprimez-les d\'abord, ou conservez le client.',
+            )
+
 
 class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
@@ -91,11 +102,22 @@ class DocumentViewSet(viewsets.ModelViewSet):
     pagination_class = PaginationStandard
 
     def get_queryset(self):
-        queryset = Document.objects.select_related('client').prefetch_related('lignes')
+        queryset = Document.objects.select_related('client', 'contrat_lie', 'contrat').prefetch_related(
+            'lignes', 'contrat__factures_liees',
+        )
         type_document = self.request.query_params.get('type_document')
         if type_document:
             queryset = queryset.filter(type_document=type_document)
         return queryset
+
+    def perform_destroy(self, instance):
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError(
+                'Impossible de supprimer cette soumission : elle a déjà un contrat signé. '
+                'Annulez le contrat si nécessaire, ou conservez la soumission comme archive.',
+            )
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -160,8 +182,26 @@ class SoumissionRepondreView(APIView):
         data = serializer.validated_data
 
         if data['reponse'] == 'acceptee':
-            contrat = creer_contrat(document, request, data['nom_signataire'].strip())
-            envoyer_contrat_signe(contrat)
+            # Le signataire n'a pas à retaper son nom — le client est déjà identifié dans le
+            # système, on utilise directement son contact enregistré (ou le nom d'entreprise
+            # à défaut de contact précisé).
+            nom_signataire = (
+                data.get('nom_signataire', '').strip()
+                or document.client.nom_contact
+                or document.client.nom_entreprise
+            )
+            contrat = creer_contrat(
+                document, request, nom_signataire, data.get('signature_image', ''),
+            )
+            # Le contrat (et la facture d'acompte, le cas échéant) existent déjà en base à ce
+            # stade — un échec d'envoi du courriel ne doit pas faire échouer l'acceptation elle-
+            # même côté client, ni renvoyer une erreur pour une opération en réalité réussie.
+            try:
+                envoyer_contrat_signe(contrat)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Échec de l'envoi du contrat signé %s", contrat.numero,
+                )
         else:
             document.statut = 'refusee'
             document.date_reponse = timezone.now()
@@ -190,10 +230,17 @@ class SoumissionContratPdfView(APIView):
         return response
 
 
-class ContratViewSet(viewsets.ReadOnlyModelViewSet):
+class ContratViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
+    """
+    Lecture + suppression seulement — jamais de création ni de modification par l'API :
+    un contrat est toujours généré automatiquement à la signature d'une soumission
+    (voir creer_contrat) et fige des montants/conditions qui ne doivent plus changer,
+    c'est ce qui en fait une preuve fiable en cas de litige.
+    """
+
     serializer_class = ContratSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Contrat.objects.select_related('soumission')
+    queryset = Contrat.objects.select_related('soumission').prefetch_related('factures_liees')
 
     @action(detail=True, methods=['get'])
     def pdf(self, request, pk=None):
@@ -208,6 +255,12 @@ class ContratViewSet(viewsets.ReadOnlyModelViewSet):
         contrat.statut = 'annule' if contrat.statut == 'actif' else 'actif'
         contrat.save(update_fields=['statut'])
         return Response(self.get_serializer(contrat).data)
+
+    @action(detail=True, methods=['post'], url_path='facturer-solde')
+    def facturer_solde(self, request, pk=None):
+        contrat = self.get_object()
+        facture = creer_facture_solde(contrat)
+        return Response(DocumentSerializer(facture).data, status=status.HTTP_201_CREATED)
 
 
 class CompteGrandLivreViewSet(viewsets.ModelViewSet):

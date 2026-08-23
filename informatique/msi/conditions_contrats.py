@@ -5,6 +5,8 @@ en langage clair plutôt qu'en clauses juridiques — ce ne sont pas des avis
 juridiques, seulement des modalités pratiques.
 """
 
+from decimal import Decimal
+
 CONDITIONS_CONTRATS = {
     'developpement': [
         (
@@ -23,8 +25,10 @@ CONDITIONS_CONTRATS = {
             "non-conformité.",
         ),
         (
-            'Propriété',
-            "Les droits sur la solution développée sont transférés au client une fois le paiement complété.",
+            'Accompagnement',
+            "Un accompagnement technique d'un (1) mois suivant la livraison est inclus sans frais — "
+            "questions d'utilisation et correction des anomalies liées aux travaux réalisés. Au-delà de "
+            "cette période, un contrat de maintenance distinct peut être proposé.",
         ),
     ],
     'maintenance': [
@@ -61,10 +65,27 @@ CONDITIONS_CONTRATS = {
 }
 
 
-def generer_conditions(categorie, *, numero_soumission, total):
-    """Retourne la liste [{titre, texte}] figée pour une soumission donnée."""
+def generer_conditions(categorie, *, numero_soumission, total, pourcentage_acompte=None):
+    """Retourne la liste [{titre, texte}] figée pour une soumission donnée.
+
+    Quand un pourcentage_acompte est fourni pour une soumission de développement, la
+    clause "Paiement" par défaut (100 % à l'acceptation) est remplacée par une clause
+    décrivant l'acompte exigé à la signature et le solde exigible à la livraison.
+    """
     gabarit = CONDITIONS_CONTRATS.get(categorie, [])
-    return [
+    conditions = [
         {'titre': titre, 'texte': texte.format(numero_soumission=numero_soumission, total=total)}
         for titre, texte in gabarit
     ]
+    if categorie == 'developpement' and pourcentage_acompte:
+        montant_acompte = (Decimal(str(total)) * Decimal(str(pourcentage_acompte)) / Decimal('100')).quantize(Decimal('0.01'))
+        pourcentage_solde = Decimal('100') - Decimal(str(pourcentage_acompte))
+        texte_paiement = (
+            f"Un acompte de {pourcentage_acompte} % ({montant_acompte} $ taxes incluses) est exigible "
+            f"à la signature de la présente soumission. Le solde de {pourcentage_solde} % est exigible à la "
+            "livraison/mise en ligne du logiciel."
+        )
+        for condition in conditions:
+            if condition['titre'] == 'Paiement':
+                condition['texte'] = texte_paiement
+    return conditions

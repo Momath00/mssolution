@@ -31,6 +31,9 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
   const [categorie, setCategorie] = useState<CategorieContrat>(
     (document?.categorie as CategorieContrat) || 'developpement',
   );
+  const [pourcentageAcompte, setPourcentageAcompte] = useState<string>(
+    document?.pourcentage_acompte ?? '35',
+  );
   const [clientId, setClientId] = useState<string>(document ? String(document.client) : '');
   const [dateEcheance, setDateEcheance] = useState(document?.date_echeance || '');
   const [lignes, setLignes] = useState<LigneDocument[]>(document?.lignes.length ? document.lignes : [ligneVide()]);
@@ -63,11 +66,14 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
     setEnCours(true);
     setErreur(null);
 
+    const acompteApplicable = typeDocument === 'soumission' && categorie === 'developpement';
+
     const payload = {
       type_document: typeDocument,
       categorie: typeDocument === 'soumission' ? categorie : '',
       client: Number(clientId),
       date_echeance: dateEcheance || null,
+      pourcentage_acompte: acompteApplicable && pourcentageAcompte ? pourcentageAcompte : null,
       lignes: lignes.map((l) => ({
         description: l.description,
         quantite: l.quantite,
@@ -141,6 +147,27 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
             </select>
             <p className="mt-1 text-xs text-black/40">
               Détermine les conditions générales du contrat généré si le client accepte cette soumission.
+            </p>
+          </div>
+        )}
+
+        {typeDocument === 'soumission' && categorie === 'developpement' && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-navy">Acompte à la signature (%)</label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={pourcentageAcompte}
+              onChange={(e) => setPourcentageAcompte(e.target.value)}
+              placeholder="Laisser vide pour un paiement complet à l'acceptation"
+              className="w-full rounded-lg border border-black/25 px-4 py-2 text-sm focus:border-navy focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-black/40">
+              Si le client accepte, une facture d&apos;acompte pour ce pourcentage est générée et envoyée
+              automatiquement. Le solde restant se facture ensuite manuellement une fois le logiciel livré.
+              Laisser vide pour exiger 100&nbsp;% à la signature, comme avant.
             </p>
           </div>
         )}
