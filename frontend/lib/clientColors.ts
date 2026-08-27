@@ -56,3 +56,17 @@ export function clientTextStyle(clientId: number | null | undefined) {
   if (!c) return null;
   return { color: c.text };
 }
+
+// Pilule pastel pleine largeur (calendrier) : fond teinté clair + texte assombri lisible.
+export function clientPillStyle(clientId: number | null | undefined) {
+  const c = clientColor(clientId);
+  if (!c) return null;
+  return { backgroundColor: hexToRgba(c.light, 0.16), color: c.text };
+}
+
+// Pastille ronde pleine (avatar client) : fond plein + texte blanc.
+export function clientAvatarStyle(clientId: number | null | undefined) {
+  const c = clientColor(clientId);
+  if (!c) return null;
+  return { backgroundColor: c.light };
+}
