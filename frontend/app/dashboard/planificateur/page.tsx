@@ -7,12 +7,22 @@ import { afficherToast } from '@/components/Toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { clientCardBorderStyle, clientColor, clientDotStyle } from '@/lib/clientColors';
 
+import CalendrierGrille from './CalendrierGrille';
 import EvenementForm from './EvenementForm';
 
-const TYPES: Record<TypeEvenement, { label: string; badge: string; icon: React.ReactNode }> = {
+type Vue = 'liste' | 'calendrier';
+
+export const TYPES: Record<
+  TypeEvenement,
+  { label: string; badge: string; dot: string; pill: string; avatar: string; carte: string; icon: React.ReactNode }
+> = {
   rendez_vous: {
     label: 'Rendez-vous',
     badge: 'bg-rose-500/10 text-rose-600',
+    dot: 'bg-rose-500',
+    pill: 'bg-rose-100 text-rose-700',
+    avatar: 'bg-rose-400',
+    carte: 'bg-gradient-to-br from-rose-50 to-white border-rose-100',
     icon: (
       <path
         strokeLinecap="round"
@@ -25,6 +35,10 @@ const TYPES: Record<TypeEvenement, { label: string; badge: string; icon: React.R
   tache: {
     label: 'Tâche',
     badge: 'bg-emerald-500/10 text-emerald-600',
+    dot: 'bg-emerald-500',
+    pill: 'bg-emerald-100 text-emerald-700',
+    avatar: 'bg-emerald-400',
+    carte: 'bg-gradient-to-br from-emerald-50 to-white border-emerald-100',
     icon: (
       <path
         strokeLinecap="round"
@@ -37,6 +51,10 @@ const TYPES: Record<TypeEvenement, { label: string; badge: string; icon: React.R
   rappel: {
     label: 'Rappel',
     badge: 'bg-amber-500/10 text-amber-600',
+    dot: 'bg-amber-500',
+    pill: 'bg-amber-100 text-amber-700',
+    avatar: 'bg-amber-400',
+    carte: 'bg-gradient-to-br from-amber-50 to-white border-amber-100',
     icon: (
       <path
         strokeLinecap="round"
@@ -48,7 +66,7 @@ const TYPES: Record<TypeEvenement, { label: string; badge: string; icon: React.R
   },
 };
 
-function toISODate(d: Date) {
+export function toISODate(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -83,6 +101,7 @@ export default function PlanificateurPage() {
   const [afficherTermines, setAfficherTermines] = useState(false);
   const [clients, setClients] = useState<ClientEntreprise[]>([]);
   const [clientFiltre, setClientFiltre] = useState<number | null>(null);
+  const [vue, setVue] = useState<Vue>('liste');
 
   // Dérivé de `maintenant` (null avant le montage client) plutôt que `new Date()` directement :
   // le serveur (UTC dans Docker) et le navigateur (fuseau local) peuvent ne pas s'accorder sur
@@ -110,6 +129,11 @@ export default function PlanificateurPage() {
     };
   }, []);
 
+  const evenementsFiltres = useMemo(
+    () => (clientFiltre ? evenements.filter((e) => e.client === clientFiltre) : evenements),
+    [evenements, clientFiltre],
+  );
+
   const { enRetard, aujourdhuiListe, cetteSemaine, semaineProchaine, plusTard, termines } = useMemo(() => {
     const enRetard: Evenement[] = [];
     const aujourdhuiListe: Evenement[] = [];
@@ -119,8 +143,7 @@ export default function PlanificateurPage() {
     const termines: Evenement[] = [];
     const finSemaineActuelle = maintenant ? finDeSemaine(maintenant) : '';
     const finSemaineProchaine = maintenant ? ajouterJours(finSemaineActuelle, 7) : '';
-    const source = clientFiltre ? evenements.filter((e) => e.client === clientFiltre) : evenements;
-    const tries = [...source].sort(
+    const tries = [...evenementsFiltres].sort(
       (a, b) => a.date.localeCompare(b.date) || (a.heure ?? '99').localeCompare(b.heure ?? '99'),
     );
     for (const ev of tries) {
@@ -139,7 +162,7 @@ export default function PlanificateurPage() {
       }
     }
     return { enRetard, aujourdhuiListe, cetteSemaine, semaineProchaine, plusTard, termines };
-  }, [evenements, aujourdhui, maintenant, clientFiltre]);
+  }, [evenementsFiltres, aujourdhui, maintenant]);
 
   function ouvrirNouveau(dateISO: string) {
     setDateFormulaire(dateISO);
@@ -194,15 +217,37 @@ export default function PlanificateurPage() {
           <h1 className="text-2xl font-bold text-navy">Planificateur</h1>
           <p className="mt-1 text-sm text-black/50">Vos rendez-vous, tâches et rappels, en un coup d&apos;œil.</p>
         </div>
-        <button
-          onClick={() => ouvrirNouveau(aujourdhui || toISODate(new Date()))}
-          className="group flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-accent/90 hover:shadow-lg hover:shadow-accent/30 active:scale-95"
-        >
-          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 transition-transform duration-200 group-hover:rotate-90" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 5v14M5 12h14" />
-          </svg>
-          Nouvel événement
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-full bg-black/[0.04] p-1">
+            <button
+              type="button"
+              onClick={() => setVue('liste')}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 ${
+                vue === 'liste' ? 'bg-white text-navy shadow-sm' : 'text-black/50 hover:text-navy'
+              }`}
+            >
+              Liste
+            </button>
+            <button
+              type="button"
+              onClick={() => setVue('calendrier')}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 ${
+                vue === 'calendrier' ? 'bg-white text-navy shadow-sm' : 'text-black/50 hover:text-navy'
+              }`}
+            >
+              Calendrier
+            </button>
+          </div>
+          <button
+            onClick={() => ouvrirNouveau(aujourdhui || toISODate(new Date()))}
+            className="group flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-accent/90 hover:shadow-lg hover:shadow-accent/30 active:scale-95"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 transition-transform duration-200 group-hover:rotate-90" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 5v14M5 12h14" />
+            </svg>
+            Nouvel événement
+          </button>
+        </div>
       </div>
 
       {erreur && <p className="mt-4 text-sm text-red-600">{erreur}</p>}
@@ -238,81 +283,92 @@ export default function PlanificateurPage() {
         </div>
       )}
 
-      <div className="mt-8 flex flex-col gap-8">
-        <SectionCartes
-          titre="En retard"
-          couleurTitre="text-rose-600"
-          evenements={enRetard}
-          onToggle={basculerTermine}
-          onEdit={ouvrirEdition}
-          onDelete={setASupprimer}
-        />
-        <SectionCartes
-          titre="Aujourd'hui"
-          evenements={aujourdhuiListe}
-          onToggle={basculerTermine}
-          onEdit={ouvrirEdition}
-          onDelete={setASupprimer}
-        />
-        <SectionCartes
-          titre="Cette semaine"
-          evenements={cetteSemaine}
-          onToggle={basculerTermine}
-          onEdit={ouvrirEdition}
-          onDelete={setASupprimer}
-        />
-        <SectionCartes
-          titre="Semaine prochaine"
-          evenements={semaineProchaine}
-          onToggle={basculerTermine}
-          onEdit={ouvrirEdition}
-          onDelete={setASupprimer}
-        />
-        <SectionCartes
-          titre="Plus tard"
-          evenements={plusTard}
-          onToggle={basculerTermine}
-          onEdit={ouvrirEdition}
-          onDelete={setASupprimer}
-        />
+      {vue === 'calendrier' ? (
+        <div className="mt-8">
+          <CalendrierGrille
+            evenements={evenementsFiltres}
+            aujourdhui={aujourdhui}
+            onNouveau={ouvrirNouveau}
+            onEdit={ouvrirEdition}
+          />
+        </div>
+      ) : (
+        <div className="mt-8 flex flex-col gap-8">
+          <SectionCartes
+            titre="En retard"
+            couleurTitre="text-rose-600"
+            evenements={enRetard}
+            onToggle={basculerTermine}
+            onEdit={ouvrirEdition}
+            onDelete={setASupprimer}
+          />
+          <SectionCartes
+            titre="Aujourd'hui"
+            evenements={aujourdhuiListe}
+            onToggle={basculerTermine}
+            onEdit={ouvrirEdition}
+            onDelete={setASupprimer}
+          />
+          <SectionCartes
+            titre="Cette semaine"
+            evenements={cetteSemaine}
+            onToggle={basculerTermine}
+            onEdit={ouvrirEdition}
+            onDelete={setASupprimer}
+          />
+          <SectionCartes
+            titre="Semaine prochaine"
+            evenements={semaineProchaine}
+            onToggle={basculerTermine}
+            onEdit={ouvrirEdition}
+            onDelete={setASupprimer}
+          />
+          <SectionCartes
+            titre="Plus tard"
+            evenements={plusTard}
+            onToggle={basculerTermine}
+            onEdit={ouvrirEdition}
+            onDelete={setASupprimer}
+          />
 
-        {aucunEvenementActif && (
-          <p className="rounded-xl border border-dashed border-black/10 py-10 text-center text-sm text-black/40">
-            Rien de prévu pour le moment. Cliquez sur « Nouvel événement » pour commencer.
-          </p>
-        )}
+          {aucunEvenementActif && (
+            <p className="rounded-xl border border-dashed border-black/10 py-10 text-center text-sm text-black/40">
+              Rien de prévu pour le moment. Cliquez sur « Nouvel événement » pour commencer.
+            </p>
+          )}
 
-        {termines.length > 0 && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setAfficherTermines((v) => !v)}
-              className="flex items-center gap-1.5 text-sm font-semibold text-black/40 transition-colors hover:text-navy"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                className={`h-4 w-4 transition-transform ${afficherTermines ? 'rotate-90' : ''}`}
-                stroke="currentColor"
+          {termines.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setAfficherTermines((v) => !v)}
+                className="flex items-center gap-1.5 text-sm font-semibold text-black/40 transition-colors hover:text-navy"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 18l6-6-6-6" />
-              </svg>
-              {afficherTermines ? 'Masquer' : 'Afficher'} les événements terminés ({termines.length})
-            </button>
-            {afficherTermines && (
-              <div className="mt-4">
-                <SectionCartes
-                  titre=""
-                  evenements={termines}
-                  onToggle={basculerTermine}
-                  onEdit={ouvrirEdition}
-                  onDelete={setASupprimer}
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  className={`h-4 w-4 transition-transform ${afficherTermines ? 'rotate-90' : ''}`}
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 18l6-6-6-6" />
+                </svg>
+                {afficherTermines ? 'Masquer' : 'Afficher'} les événements terminés ({termines.length})
+              </button>
+              {afficherTermines && (
+                <div className="mt-4">
+                  <SectionCartes
+                    titre=""
+                    evenements={termines}
+                    onToggle={basculerTermine}
+                    onEdit={ouvrirEdition}
+                    onDelete={setASupprimer}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {enEdition && (
         <EvenementForm
@@ -404,9 +460,9 @@ function EvenementCarte({
 
   return (
     <div
-      className={`group relative flex flex-col gap-3 rounded-xl border border-black/5 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
-        bordureClient ? 'border-l-4' : ''
-      } ${ev.termine ? 'opacity-60' : ''}`}
+      className={`group relative flex flex-col gap-3 rounded-xl border p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
+        ev.termine ? 'border-black/5 bg-white opacity-60' : type.carte
+      } ${bordureClient ? 'border-l-4' : ''}`}
       style={bordureClient ?? undefined}
     >
       <div className="flex items-start justify-between gap-2">
