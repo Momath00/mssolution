@@ -33,7 +33,18 @@ def creer_contrat(document, request, nom_signataire, signature_image=''):
     créé mais la soumission toujours marquée « envoyée », rendant impossible toute
     nouvelle tentative (contrainte d'unicité soumission/contrat) sans intervention
     manuelle en base.
+
+    Le verrou ci-dessous ferme une course possible entre la vérification de statut faite
+    par la vue et cet appel : deux requêtes d'acceptation quasi simultanées (double clic,
+    lien cliqué deux fois) passaient toutes les deux la vérification avant qu'aucune des
+    deux n'ait encore écrit, puis la seconde plantait avec une IntegrityError (contrainte
+    d'unicité soumission/contrat) au lieu d'un message propre. Avec select_for_update, la
+    seconde requête attend que la première termine puis relit un statut déjà à jour.
     """
+    document = Document.objects.select_for_update().get(pk=document.pk)
+    if document.statut in ('acceptee', 'refusee'):
+        raise ValidationError('Cette soumission a déjà reçu une réponse.')
+
     numero = Contrat.generer_numero()
     lignes_json = [
         {

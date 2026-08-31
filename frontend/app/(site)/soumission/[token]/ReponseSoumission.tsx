@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { apiUrlClient, fetchClient, type StatutDocument } from '@/lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -57,8 +57,14 @@ export default function ReponseSoumission({
   // Venir du lien « Accepter » du courriel accepte directement, sans repasser par un clic
   // supplémentaire sur la page — le clic dans le courriel est déjà le geste d'acceptation.
   const acceptationAuto = intentionInitiale === 'accepter' && statut === 'envoyee' && !expiree;
+  // Un ref (pas juste enCours) car React StrictMode exécute cet effet deux fois au montage en
+  // développement — sans ce garde-fou, ça envoie deux requêtes d'acceptation simultanées.
+  const dejaDeclenche = useRef(false);
   useEffect(() => {
-    if (acceptationAuto) repondre('acceptee');
+    if (acceptationAuto && !dejaDeclenche.current) {
+      dejaDeclenche.current = true;
+      repondre('acceptee');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

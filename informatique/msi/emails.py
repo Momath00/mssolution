@@ -285,9 +285,17 @@ def envoyer_document(document):
                 f'&eacute;t&eacute; factur&eacute;.</p>'
             )
 
+    abonnement_saas_html = ''
+    if document.categorie == 'abonnement_saas':
+        abonnement_saas_html = (
+            f'<p style="margin-top:8px;">Il s&rsquo;agit de votre abonnement logiciel '
+            f'<strong>ExtincPro</strong>.</p>'
+        )
+
     corps = (
         f'<p>Bonjour {document.client.nom_entreprise},</p>'
         f'<p>Veuillez trouver ci-joint votre {type_label.lower()} n&deg; {document.numero}.</p>'
+        f'{abonnement_saas_html}'
         f'{paiement_info_html}'
         f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:20px;">'
         f'<tr><td style="background:{ACCENT};border-radius:8px;padding:12px 20px;">'

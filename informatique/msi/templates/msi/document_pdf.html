@@ -45,6 +45,20 @@
         font-weight: bold;
         color: #fff;
     }
+    .sous-titre-produit {
+        display: inline-block;
+        margin: -10px 0 16px;
+        padding: 6px 14px;
+        background: #000;
+        border-radius: 6px;
+        font-size: 13pt;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: -0.3px;
+    }
+    .sous-titre-produit .pro {
+        color: #ff2438;
+    }
     h1.titre-doc {
         font-size: 22pt;
         letter-spacing: 2px;
@@ -158,6 +172,9 @@
     </div>
 
     <h1 class="titre-doc">{{ type_label }}</h1>
+    {% if document.categorie == 'abonnement_saas' %}
+    <p class="sous-titre-produit">Extinc<span class="pro">Pro</span></p>
+    {% endif %}
 
     <div class="blocs-info">
         <div class="bloc">

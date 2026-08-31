@@ -56,12 +56,13 @@ export interface LigneDocument {
   montant?: string;
 }
 
-export type CategorieContrat = 'developpement' | 'maintenance' | 'fonctionnalite';
+export type CategorieContrat = 'developpement' | 'maintenance' | 'fonctionnalite' | 'abonnement_saas';
 
 export const CATEGORIE_LABELS: Record<CategorieContrat, string> = {
   developpement: 'Développement de logiciel',
   maintenance: 'Maintenance',
   fonctionnalite: 'Ajout de fonctionnalité',
+  abonnement_saas: 'Abonnement annuel ExtincPro',
 };
 
 export type StatutDocument = 'brouillon' | 'envoyee' | 'acceptee' | 'refusee' | 'payee';

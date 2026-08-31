@@ -70,7 +70,7 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
 
     const payload = {
       type_document: typeDocument,
-      categorie: typeDocument === 'soumission' ? categorie : '',
+      categorie,
       client: Number(clientId),
       date_echeance: dateEcheance || null,
       pourcentage_acompte: acompteApplicable && pourcentageAcompte ? pourcentageAcompte : null,
@@ -133,23 +133,23 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
           </div>
         </div>
 
-        {typeDocument === 'soumission' && (
-          <div>
-            <label className="mb-1 block text-sm font-medium text-navy">Catégorie de contrat</label>
-            <select
-              value={categorie}
-              onChange={(e) => setCategorie(e.target.value as CategorieContrat)}
-              className="w-full rounded-lg border border-black/25 px-4 py-2 text-sm focus:border-navy focus:outline-none"
-            >
-              {Object.entries(CATEGORIE_LABELS).map(([valeur, label]) => (
-                <option key={valeur} value={valeur}>{label}</option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-black/40">
-              Détermine les conditions générales du contrat généré si le client accepte cette soumission.
-            </p>
-          </div>
-        )}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-navy">Catégorie</label>
+          <select
+            value={categorie}
+            onChange={(e) => setCategorie(e.target.value as CategorieContrat)}
+            className="w-full rounded-lg border border-black/25 px-4 py-2 text-sm focus:border-navy focus:outline-none"
+          >
+            {Object.entries(CATEGORIE_LABELS).map(([valeur, label]) => (
+              <option key={valeur} value={valeur}>{label}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-black/40">
+            {typeDocument === 'soumission'
+              ? 'Détermine les conditions générales du contrat généré si le client accepte cette soumission.'
+              : 'Détermine la mise en forme de la facture (ex. logo ExtincPro pour un abonnement SaaS).'}
+          </p>
+        </div>
 
         {typeDocument === 'soumission' && categorie === 'developpement' && (
           <div>

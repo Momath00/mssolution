@@ -11,6 +11,7 @@ CATEGORIE_CONTRAT_CHOICES = [
     ('developpement', 'Développement de logiciel'),
     ('maintenance', 'Maintenance'),
     ('fonctionnalite', 'Ajout de fonctionnalité'),
+    ('abonnement_saas', 'Abonnement annuel ExtincPro'),
 ]
 
 class StockagePriveContrats(FileSystemStorage):

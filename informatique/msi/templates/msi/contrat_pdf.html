@@ -66,6 +66,20 @@
         color: #777;
         margin: 0 0 20px;
     }
+    .badge-produit {
+        display: inline-block;
+        margin: 0 0 20px;
+        padding: 5px 12px;
+        background: #000;
+        border-radius: 6px;
+        font-size: 12pt;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: -0.3px;
+    }
+    .badge-produit .pro {
+        color: #ff2438;
+    }
 
     .blocs-parties {
         display: flex;
@@ -217,7 +231,11 @@
     </div>
 
     <h1 class="titre-doc">Facture</h1>
+    {% if contrat.categorie == 'abonnement_saas' %}
+    <p class="badge-produit">Abonnement annuel Extinc<span class="pro">Pro</span></p>
+    {% else %}
     <p class="sous-titre-doc">{{ categorie_label }}</p>
+    {% endif %}
 
     <div class="blocs-parties">
         <div class="bloc-partie">

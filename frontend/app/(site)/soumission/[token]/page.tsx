@@ -37,7 +37,18 @@ export default async function SoumissionPubliquePage({
       <p className="text-xs font-semibold uppercase tracking-widest text-accent">
         Soumission n&deg; {soumission.numero}
       </p>
-      <h1 className="mt-1 text-3xl font-bold text-navy">{soumission.categorie_label || 'Votre soumission'}</h1>
+      <h1 className="mt-1 flex flex-wrap items-center gap-2.5 text-3xl font-bold text-navy">
+        {soumission.categorie === 'abonnement_saas' ? (
+          <>
+            Abonnement annuel
+            <span className="inline-block rounded-md bg-black px-3 py-1 text-2xl font-extrabold tracking-tight text-white">
+              Extinc<span className="text-red-600">Pro</span>
+            </span>
+          </>
+        ) : (
+          soumission.categorie_label || 'Votre soumission'
+        )}
+      </h1>
       <p className="mt-2 text-black/60">Préparée pour {soumission.client_nom}.</p>
 
       <div className="mt-8 overflow-x-auto rounded-xl border border-black/10">

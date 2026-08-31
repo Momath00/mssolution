@@ -62,6 +62,28 @@ CONDITIONS_CONTRATS = {
             "corrigée sans frais.",
         ),
     ],
+    'abonnement_saas': [
+        (
+            'Portée',
+            "Donne accès à la plateforme logicielle décrite ci-dessus, pour l'organisation cliente, "
+            "pour une durée de douze (12) mois à compter de l'acceptation de la présente soumission.",
+        ),
+        (
+            'Paiement',
+            "Le paiement complet (100 %) est exigible à l'acceptation de la présente soumission. Aucun "
+            "acompte n'est requis.",
+        ),
+        (
+            'Renouvellement',
+            "L'abonnement est reconduit automatiquement pour une période additionnelle de douze (12) "
+            "mois, sauf avis écrit donné par l'une ou l'autre partie au moins 30 jours avant l'échéance.",
+        ),
+        (
+            'Suspension',
+            "L'accès à la plateforme peut être suspendu si le paiement n'est pas reçu dans les 30 jours "
+            "suivant la date d'échéance de la facture de renouvellement.",
+        ),
+    ],
 }
 
 
