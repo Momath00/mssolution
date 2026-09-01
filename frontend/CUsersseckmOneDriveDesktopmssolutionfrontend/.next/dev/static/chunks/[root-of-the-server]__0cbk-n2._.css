@@ -189,7 +189,6 @@
 
 @layer theme {
   :root, :host {
-    --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
     --color-red-50: #fef2f2;
     --color-red-100: #ffe2e2;
     --color-red-600: #e40014;
@@ -206,7 +205,6 @@
     --color-green-600: #00a544;
     --color-green-700: #008138;
     --color-green-800: #016630;
-    --color-green-900: #0d542b;
     --color-emerald-50: #ecfdf5;
     --color-emerald-100: #d0fae5;
     --color-emerald-400: #00d294;
@@ -217,6 +215,9 @@
     --color-blue-100: #dbeafe;
     --color-blue-400: #54a2ff;
     --color-blue-700: #1447e6;
+    --color-indigo-100: #e0e7ff;
+    --color-indigo-600: #4f39f6;
+    --color-indigo-700: #432dd7;
     --color-rose-50: #fff1f2;
     --color-rose-100: #ffe4e6;
     --color-rose-400: #ff667f;
@@ -257,6 +258,7 @@
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
     --font-weight-bold: 700;
+    --font-weight-extrabold: 800;
     --tracking-tight: -.025em;
     --tracking-wide: .025em;
     --tracking-widest: .1em;
@@ -291,7 +293,6 @@
       --color-green-600: lab(59.0978% -58.6621 41.2579);
       --color-green-700: lab(47.0329% -47.0239 31.4788);
       --color-green-800: lab(37.4616% -36.7971 22.9692);
-      --color-green-900: lab(30.797% -29.6927 17.382);
       --color-emerald-50: lab(97.8462% -6.94966 1.85487);
       --color-emerald-100: lab(94.9004% -17.0769 5.63836);
       --color-emerald-400: lab(75.0771% -60.7313 19.4147);
@@ -302,6 +303,9 @@
       --color-blue-100: lab(92.0301% -2.24757 -11.6453);
       --color-blue-400: lab(65.0361% -1.42065 -56.9802);
       --color-blue-700: lab(36.9089% 35.0961 -85.6872);
+      --color-indigo-100: lab(91.6577% 1.04591 -12.7199);
+      --color-indigo-600: lab(38.4009% 52.6132 -92.3857);
+      --color-indigo-700: lab(32.4486% 49.2217 -84.6695);
       --color-rose-50: lab(96.2369% 4.94155 1.28011);
       --color-rose-100: lab(92.8221% 9.86832 2.60075);
       --color-rose-400: lab(64.4125% 63.0291 19.2068);
@@ -1290,16 +1294,6 @@
     border-color: var(--color-green-700);
   }
 
-  .border-green-800\/15 {
-    border-color: #01663026;
-  }
-
-  @supports (color: color-mix(in lab, red, red)) {
-    .border-green-800\/15 {
-      border-color: color-mix(in oklab, var(--color-green-800) 15%, transparent);
-    }
-  }
-
   .border-navy {
     border-color: var(--navy);
   }
@@ -1394,6 +1388,10 @@
     }
   }
 
+  .bg-black {
+    background-color: var(--color-black);
+  }
+
   .bg-black\/5 {
     background-color: #0000000d;
   }
@@ -1484,6 +1482,14 @@
 
   .bg-green-700 {
     background-color: var(--color-green-700);
+  }
+
+  .bg-indigo-100 {
+    background-color: var(--color-indigo-100);
+  }
+
+  .bg-indigo-600 {
+    background-color: var(--color-indigo-600);
   }
 
   .bg-navy {
@@ -1631,6 +1637,10 @@
     padding-inline: calc(var(--spacing) * 2);
   }
 
+  .px-2\.5 {
+    padding-inline: calc(var(--spacing) * 2.5);
+  }
+
   .px-3 {
     padding-inline: calc(var(--spacing) * 3);
   }
@@ -1707,10 +1717,6 @@
     padding-top: calc(var(--spacing) * 2);
   }
 
-  .pt-3 {
-    padding-top: calc(var(--spacing) * 3);
-  }
-
   .pt-6 {
     padding-top: calc(var(--spacing) * 6);
   }
@@ -1753,10 +1759,6 @@
 
   .text-right {
     text-align: right;
-  }
-
-  .font-serif {
-    font-family: var(--font-serif);
   }
 
   .text-2xl {
@@ -1832,6 +1834,11 @@
   .font-bold {
     --tw-font-weight: var(--font-weight-bold);
     font-weight: var(--font-weight-bold);
+  }
+
+  .font-extrabold {
+    --tw-font-weight: var(--font-weight-extrabold);
+    font-weight: var(--font-weight-extrabold);
   }
 
   .font-medium {
@@ -1996,22 +2003,12 @@
     color: var(--color-green-700);
   }
 
-  .text-green-700\/70 {
-    color: #008138b3;
-  }
-
-  @supports (color: color-mix(in lab, red, red)) {
-    .text-green-700\/70 {
-      color: color-mix(in oklab, var(--color-green-700) 70%, transparent);
-    }
-  }
-
   .text-green-800 {
     color: var(--color-green-800);
   }
 
-  .text-green-900 {
-    color: var(--color-green-900);
+  .text-indigo-700 {
+    color: var(--color-indigo-700);
   }
 
   .text-navy {
@@ -2116,10 +2113,6 @@
     text-transform: uppercase;
   }
 
-  .italic {
-    font-style: italic;
-  }
-
   .line-through {
     text-decoration-line: line-through;
   }
@@ -2131,10 +2124,6 @@
 
   .accent-accent {
     accent-color: var(--accent);
-  }
-
-  .accent-green-600 {
-    accent-color: var(--color-green-600);
   }
 
   .opacity-0 {

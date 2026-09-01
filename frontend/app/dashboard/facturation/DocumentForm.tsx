@@ -76,8 +76,8 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
       pourcentage_acompte: acompteApplicable && pourcentageAcompte ? pourcentageAcompte : null,
       lignes: lignes.map((l) => ({
         description: l.description,
-        quantite: l.quantite,
-        prix_unitaire: l.prix_unitaire,
+        quantite: l.quantite || '0',
+        prix_unitaire: l.prix_unitaire || '0',
       })),
     };
 

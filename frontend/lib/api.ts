@@ -242,7 +242,8 @@ export async function fetchClient<T>(path: string, init?: RequestInit): Promise<
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(body?.detail || `Échec de la requête ${path} (${res.status})`);
+    const detail = body?.detail || (body && typeof body === 'object' ? JSON.stringify(body) : null);
+    throw new Error(detail || `Échec de la requête ${path} (${res.status})`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
