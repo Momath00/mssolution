@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .auth_views import CookieTokenObtainPairView, CookieTokenRefreshView, LogoutView
 from .views import (
+    ArticleCatalogueViewSet,
     ClientViewSet,
     CompteGrandLivreViewSet,
     ContactView,
@@ -29,6 +30,7 @@ router.register('clients', ClientViewSet, basename='client')
 router.register('documents', DocumentViewSet, basename='document')
 router.register('contrats', ContratViewSet, basename='contrat')
 router.register('evenements', EvenementViewSet, basename='evenement')
+router.register('catalogue', ArticleCatalogueViewSet, basename='catalogue')
 router.register('comptes-grand-livre', CompteGrandLivreViewSet, basename='compte-grand-livre')
 router.register('depenses', DepenseViewSet, basename='depense')
 router.register('rapports-comptables', RapportComptableArchiveViewSet, basename='rapport-comptable-archive')

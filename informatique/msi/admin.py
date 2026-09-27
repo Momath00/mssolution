@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    ArticleCatalogue,
     Client,
     CompteGrandLivre,
     Coordonnees,
@@ -54,6 +55,13 @@ class CoordonneesAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(ArticleCatalogue)
+class ArticleCatalogueAdmin(admin.ModelAdmin):
+    list_display = ('nom', 'prix', 'frequence', 'actif', 'ordre')
+    list_filter = ('actif', 'frequence')
+    search_fields = ('nom', 'description')
 
 
 @admin.register(CompteGrandLivre)

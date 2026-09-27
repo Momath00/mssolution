@@ -25,6 +25,7 @@ from .emails import (
     envoyer_soumission_refusee,
 )
 from .models import (
+    ArticleCatalogue,
     Client,
     CompteGrandLivre,
     Contrat,
@@ -39,6 +40,7 @@ from .excel import generer_excel_rapport_comptable
 from .pagination import PaginationStandard
 from .pdf import generer_pdf_document, generer_rapport_comptable
 from .serializers import (
+    ArticleCatalogueSerializer,
     ClientSerializer,
     CompteGrandLivreSerializer,
     ContactSerializer,
@@ -261,6 +263,12 @@ class ContratViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
         contrat = self.get_object()
         facture = creer_facture_solde(contrat)
         return Response(DocumentSerializer(facture).data, status=status.HTTP_201_CREATED)
+
+
+class ArticleCatalogueViewSet(viewsets.ModelViewSet):
+    serializer_class = ArticleCatalogueSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = ArticleCatalogue.objects.all()
 
 
 class CompteGrandLivreViewSet(viewsets.ModelViewSet):

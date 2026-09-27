@@ -175,6 +175,34 @@ class LigneDocument(models.Model):
         return f'{self.description} ({self.document.numero})'
 
 
+class ArticleCatalogue(models.Model):
+    """
+    Service ou module à prix standard (grille tarifaire), choisi dans le formulaire de
+    soumission/facture pour pré-remplir une ligne. La ligne créée est une copie : modifier
+    un prix ici ne change pas les documents déjà émis.
+    """
+
+    FREQUENCE_CHOICES = [
+        ('unique', 'Paiement unique'),
+        ('annuel', 'Par année'),
+    ]
+
+    nom = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    prix = models.DecimalField(max_digits=10, decimal_places=2)
+    frequence = models.CharField(max_length=10, choices=FREQUENCE_CHOICES, default='unique')
+    actif = models.BooleanField(default=True)
+    ordre = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['ordre', 'nom']
+        verbose_name = 'Article du catalogue'
+        verbose_name_plural = 'Articles du catalogue'
+
+    def __str__(self):
+        return f'{self.nom} ({self.prix} $)'
+
+
 class Evenement(models.Model):
     TYPE_CHOICES = [
         ('rendez_vous', 'Rendez-vous'),

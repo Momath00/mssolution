@@ -7,6 +7,7 @@ import { useListePaginee } from '@/lib/useListePaginee';
 import { afficherToast } from '@/components/Toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
+import CatalogueManager from './CatalogueManager';
 import DocumentForm from './DocumentForm';
 
 const statutLabel: Record<string, string> = {
@@ -26,7 +27,8 @@ const statutStyle: Record<string, string> = {
 };
 
 export default function FacturationDashboardPage() {
-  const [onglet, setOnglet] = useState<'soumission' | 'facture'>('soumission');
+  const [onglet, setOnglet] = useState<'soumission' | 'facture' | 'catalogue'>('soumission');
+  const typeListe = onglet === 'facture' ? 'facture' : 'soumission';
   const {
     items: documents,
     setItems: setDocuments,
@@ -37,7 +39,7 @@ export default function FacturationDashboardPage() {
     sentinelleRef,
     recharger,
     chargerPlus,
-  } = useListePaginee<DocumentFacturation>(`/api/documents/?type_document=${onglet}`);
+  } = useListePaginee<DocumentFacturation>(`/api/documents/?type_document=${typeListe}`);
 
   const [enEdition, setEnEdition] = useState<DocumentFacturation | null | 'nouveau'>(null);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -116,7 +118,7 @@ export default function FacturationDashboardPage() {
     return (
       <DocumentForm
         document={enEdition === 'nouveau' ? null : enEdition}
-        typeParDefaut={onglet}
+        typeParDefaut={typeListe}
         onDone={() => {
           afficherToast(enEdition === 'nouveau' ? 'Document créé avec succès.' : 'Document mis à jour.');
           setEnEdition(null);
@@ -131,18 +133,20 @@ export default function FacturationDashboardPage() {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-navy">Facturation</h1>
-        <button
-          onClick={() => setEnEdition('nouveau')}
-          className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-        >
-          + Nouveau
-        </button>
+        {onglet !== 'catalogue' && (
+          <button
+            onClick={() => setEnEdition('nouveau')}
+            className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            + Nouveau
+          </button>
+        )}
       </div>
 
       {(erreur || erreurChargement) && <p className="mt-4 text-sm text-red-600">{erreur || erreurChargement}</p>}
 
       <div className="mt-6 flex gap-1 border-b border-black/10">
-        {(['soumission', 'facture'] as const).map((type) => (
+        {(['soumission', 'facture', 'catalogue'] as const).map((type) => (
           <button
             key={type}
             onClick={() => setOnglet(type)}
@@ -152,11 +156,17 @@ export default function FacturationDashboardPage() {
                 : 'border-transparent text-black/40 hover:text-black/60'
             }`}
           >
-            {type === 'soumission' ? 'Soumissions' : 'Factures'}
+            {type === 'soumission' ? 'Soumissions' : type === 'facture' ? 'Factures' : 'Catalogue de prix'}
           </button>
         ))}
       </div>
 
+      {onglet === 'catalogue' ? (
+        <div className="mt-6">
+          <CatalogueManager />
+        </div>
+      ) : (
+      <>
       {!chargementInitial && total > 0 && (
         <p className="mt-4 text-xs text-black/40">
           {documents.length} sur {total} {onglet === 'soumission' ? 'soumissions' : 'factures'}
@@ -269,6 +279,9 @@ export default function FacturationDashboardPage() {
           </button>
         )}
       </div>
+
+      </>
+      )}
 
       {aSupprimer && (
         <ConfirmDialog

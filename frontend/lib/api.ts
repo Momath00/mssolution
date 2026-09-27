@@ -142,6 +142,16 @@ export interface SoumissionPublique {
   conditions: ClauseContrat[];
 }
 
+export interface ArticleCatalogue {
+  id: number;
+  nom: string;
+  description: string;
+  prix: string;
+  frequence: 'unique' | 'annuel';
+  actif: boolean;
+  ordre: number;
+}
+
 export interface CompteGrandLivre {
   id: number;
   nom: string;

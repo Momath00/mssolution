@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import {
   CATEGORIE_LABELS,
+  type ArticleCatalogue,
   fetchClient,
   type CategorieContrat,
   type ClientEntreprise,
@@ -27,6 +28,7 @@ function ligneVide(): LigneDocument {
 
 export default function DocumentForm({ document, typeParDefaut, onDone, onCancel }: Props) {
   const [clients, setClients] = useState<ClientEntreprise[]>([]);
+  const [catalogue, setCatalogue] = useState<ArticleCatalogue[]>([]);
   const [typeDocument, setTypeDocument] = useState(document?.type_document || typeParDefaut || 'soumission');
   const [categorie, setCategorie] = useState<CategorieContrat>(
     (document?.categorie as CategorieContrat) || 'developpement',
@@ -42,6 +44,9 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
 
   useEffect(() => {
     fetchClient<ClientEntreprise[]>('/api/clients/').then(setClients).catch(() => {});
+    fetchClient<ArticleCatalogue[]>('/api/catalogue/')
+      .then((articles) => setCatalogue(articles.filter((a) => a.actif)))
+      .catch(() => {});
   }, []);
 
   function majLigne(index: number, champ: keyof LigneDocument, valeur: string) {
@@ -50,6 +55,18 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
 
   function ajouterLigne() {
     setLignes((prev) => [...prev, ligneVide()]);
+  }
+
+  function ajouterDepuisCatalogue(id: string) {
+    const article = catalogue.find((a) => String(a.id) === id);
+    if (!article) return;
+    const suffixe = article.frequence === 'annuel' ? ' (par année)' : '';
+    const description = `${article.nom}${article.description ? ` — ${article.description}` : ''}${suffixe}`.slice(0, 300);
+    const ligne = { description, quantite: '1', prix_unitaire: article.prix };
+    // Remplace la ligne vide de départ plutôt que d'en laisser une à retirer à la main.
+    setLignes((prev) =>
+      prev.length === 1 && !prev[0].description && !Number(prev[0].prix_unitaire) ? [ligne] : [...prev, ligne],
+    );
   }
 
   function retirerLigne(index: number) {
@@ -229,13 +246,29 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
               </div>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={ajouterLigne}
-            className="mt-2 text-sm font-semibold text-accent hover:underline"
-          >
-            + Ajouter une ligne
-          </button>
+          <div className="mt-2 flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              onClick={ajouterLigne}
+              className="text-sm font-semibold text-accent hover:underline"
+            >
+              + Ajouter une ligne
+            </button>
+            {catalogue.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => ajouterDepuisCatalogue(e.target.value)}
+                className="min-w-0 flex-1 rounded-lg border border-black/25 px-3 py-2 text-sm focus:border-navy focus:outline-none"
+              >
+                <option value="">+ Ajouter depuis le catalogue de prix…</option>
+                {catalogue.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nom} — {Number(a.prix).toFixed(2)} ${a.frequence === 'annuel' ? ' / année' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
 
         <div className="ml-auto w-64 rounded-lg bg-white p-4 text-sm shadow-sm">

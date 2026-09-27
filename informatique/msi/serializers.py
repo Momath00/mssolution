@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .conditions_contrats import generer_conditions
 from .models import (
+    ArticleCatalogue,
     Client,
     CompteGrandLivre,
     Contrat,
@@ -201,6 +202,12 @@ class CoordonneesSerializer(serializers.ModelSerializer):
             'nom_entreprise', 'courriel', 'telephone', 'adresse', 'logo',
             'numero_tps', 'numero_tvq', 'courriel_comptable',
         ]
+
+
+class ArticleCatalogueSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ArticleCatalogue
+        fields = ['id', 'nom', 'description', 'prix', 'frequence', 'actif', 'ordre']
 
 
 class CompteGrandLivreSerializer(serializers.ModelSerializer):
