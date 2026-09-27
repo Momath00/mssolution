@@ -72,9 +72,10 @@ export default function RapportComptable() {
   return (
     <div>
       <p className="max-w-xl text-sm text-black/50">
-        Génère un rapport pour la période choisie&nbsp;: ventes, dépenses par compte de grand livre, sommaire des
-        taxes perçues/payées et les photos des factures jointes. Disponible en PDF (avec pièces jointes) et en
-        Excel (onglets Ventes, Dépenses, Sommaire).
+        Génère un rapport pour la période choisie&nbsp;: ventes (factures émises dans la période, payées ou non),
+        dépenses par compte de grand livre, sommaire des taxes facturées/payées, paiements reçus, comptes à
+        recevoir et les photos des factures jointes. Disponible en PDF (avec pièces jointes) et en Excel
+        (onglets Ventes, Dépenses, Encaissements, À recevoir, Sommaire).
       </p>
 
       <div className="mt-6 flex max-w-md flex-wrap items-end gap-4">

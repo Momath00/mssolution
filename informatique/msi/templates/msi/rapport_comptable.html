@@ -131,6 +131,33 @@
         border-top: 2px solid #1a1440;
         font-size: 9.5pt;
     }
+    /* Une ligne n'est jamais coupée entre deux pages ; l'en-tête se répète en haut de page. */
+    table.lignes tr {
+        page-break-inside: avoid;
+    }
+    table.lignes td.chiffre,
+    table.lignes th.chiffre {
+        white-space: nowrap;
+    }
+    /* Tableau des ventes (9 colonnes) : plus dense, largeurs fixes pour tenir dans la page. */
+    table.lignes.compacte {
+        table-layout: fixed;
+    }
+    table.lignes.compacte thead th {
+        font-size: 7pt;
+        padding: 6px 4px;
+        letter-spacing: 0;
+    }
+    table.lignes.compacte tbody td,
+    table.lignes.compacte tfoot td {
+        font-size: 8pt;
+        padding: 5px 4px;
+    }
+    table.lignes.compacte td.client {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
     .badge {
         display: inline-block;
         background: #eef0f6;
@@ -229,7 +256,7 @@
 
     <div class="cartes">
         <div class="carte">
-            <h4>Ventes (pay&eacute;es)</h4>
+            <h4>Ventes (factures &eacute;mises)</h4>
             <div class="valeur">{{ total_ventes }}&nbsp;$</div>
         </div>
         <div class="carte">
@@ -246,9 +273,24 @@
         </div>
     </div>
 
-    <h2 class="section">Ventes</h2>
+    <h2 class="section">Ventes (factures &eacute;mises dans la p&eacute;riode)</h2>
+    <p style="font-size:8.5pt;color:#777;margin:-4px 0 8px;">
+        Comptabilit&eacute; d'exercice : chaque facture compte &agrave; sa date d'&eacute;mission, pay&eacute;e ou non.
+        Les taxes per&ccedil;ues ci-dessous sont celles factur&eacute;es durant la p&eacute;riode.
+    </p>
     {% if ventes %}
-    <table class="lignes">
+    <table class="lignes compacte">
+        <colgroup>
+            <col style="width:9%">
+            <col style="width:12.5%">
+            <col style="width:17.5%">
+            <col style="width:11%">
+            <col style="width:8.5%">
+            <col style="width:8.5%">
+            <col style="width:11%">
+            <col style="width:11%">
+            <col style="width:11%">
+        </colgroup>
         <thead>
             <tr>
                 <th>Date</th>
@@ -258,6 +300,8 @@
                 <th class="chiffre">TPS</th>
                 <th class="chiffre">TVQ</th>
                 <th class="chiffre">Total</th>
+                <th class="chiffre">Pay&eacute;*</th>
+                <th class="chiffre">Solde*</th>
             </tr>
         </thead>
         <tbody>
@@ -265,11 +309,13 @@
             <tr>
                 <td>{{ v.date_creation|date:"d/m/Y" }}</td>
                 <td>{{ v.numero }}</td>
-                <td>{{ v.client.nom_entreprise }}</td>
+                <td class="client">{{ v.client.nom_entreprise }}</td>
                 <td class="chiffre">{{ v.sous_total }}&nbsp;$</td>
                 <td class="chiffre">{{ v.montant_tps }}&nbsp;$</td>
                 <td class="chiffre">{{ v.montant_tvq }}&nbsp;$</td>
                 <td class="chiffre">{{ v.total }}&nbsp;$</td>
+                <td class="chiffre">{{ v.paye_fin_periode }}&nbsp;$</td>
+                <td class="chiffre">{{ v.solde_fin_periode }}&nbsp;$</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -280,11 +326,14 @@
                 <td class="chiffre">{{ tps_percue }}&nbsp;$</td>
                 <td class="chiffre">{{ tvq_percue }}&nbsp;$</td>
                 <td class="chiffre">{{ total_ventes }}&nbsp;$</td>
+                <td class="chiffre">{{ paye_ventes }}&nbsp;$</td>
+                <td class="chiffre">{{ solde_ventes }}&nbsp;$</td>
             </tr>
         </tfoot>
     </table>
+    <p style="font-size:8pt;color:#777;margin-top:4px;">* Au dernier jour de la p&eacute;riode.</p>
     {% else %}
-    <p class="vide">Aucune vente pay&eacute;e durant cette p&eacute;riode.</p>
+    <p class="vide">Aucune facture &eacute;mise durant cette p&eacute;riode.</p>
     {% endif %}
 
     <h2 class="section">D&eacute;penses</h2>
@@ -328,6 +377,78 @@
     <p class="vide">Aucune d&eacute;pense saisie durant cette p&eacute;riode.</p>
     {% endif %}
 
+    <h2 class="section">Paiements re&ccedil;us (encaissements)</h2>
+    {% if encaissements %}
+    <table class="lignes">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>N&deg; facture</th>
+                <th>Client</th>
+                <th>Mode</th>
+                <th>R&eacute;f&eacute;rence</th>
+                <th class="chiffre">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in encaissements %}
+            <tr>
+                <td>{{ p.date|date:"d/m/Y" }}</td>
+                <td>{{ p.document.numero }}</td>
+                <td>{{ p.document.client.nom_entreprise }}</td>
+                <td>{{ p.get_mode_display }}</td>
+                <td>{{ p.reference }}</td>
+                <td class="chiffre">{{ p.montant }}&nbsp;$</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="5">Total re&ccedil;u</td>
+                <td class="chiffre">{{ total_encaissements }}&nbsp;$</td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <p class="vide">Aucun paiement re&ccedil;u durant cette p&eacute;riode.</p>
+    {% endif %}
+
+    <h2 class="section">Comptes &agrave; recevoir au {{ date_fin_periode|date:"d/m/Y" }}</h2>
+    {% if a_recevoir %}
+    <table class="lignes">
+        <thead>
+            <tr>
+                <th>N&deg; facture</th>
+                <th>Client</th>
+                <th>&Eacute;ch&eacute;ance</th>
+                <th class="chiffre">Total</th>
+                <th class="chiffre">Pay&eacute;</th>
+                <th class="chiffre">Solde d&ucirc;</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in a_recevoir %}
+            <tr>
+                <td>{{ r.facture.numero }}</td>
+                <td>{{ r.facture.client.nom_entreprise }}</td>
+                <td>{{ r.facture.date_echeance|date:"d/m/Y"|default:"—" }}</td>
+                <td class="chiffre">{{ r.facture.total }}&nbsp;$</td>
+                <td class="chiffre">{{ r.paye }}&nbsp;$</td>
+                <td class="chiffre">{{ r.solde }}&nbsp;$</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="5">Total &agrave; recevoir</td>
+                <td class="chiffre">{{ total_a_recevoir }}&nbsp;$</td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <p class="vide">Aucun solde d&ucirc; &agrave; la fin de cette p&eacute;riode.</p>
+    {% endif %}
+
     <h2 class="section">Sommaire des taxes</h2>
     <table class="sommaire-taxes">
         <tr><th></th><th style="text-align:right;">Per&ccedil;u (ventes)</th><th style="text-align:right;">Pay&eacute; (d&eacute;penses)</th><th style="text-align:right;">&Agrave; payer (rembours&eacute;)</th></tr>
@@ -353,7 +474,7 @@
             <img src="{{ p.uri }}" alt="Re&ccedil;u {{ p.depense.fournisseur }}">
             <div class="legende">
                 <strong>{{ p.depense.fournisseur }}</strong><br>
-                {{ p.depense.date|date:"d/m/Y" }} &middot; {{ p.depense.montant }}&nbsp;$
+                {{ p.depense.date|date:"d/m/Y" }} &middot; {{ p.depense.total }}&nbsp;$
             </div>
         </div>
         {% endfor %}

@@ -87,7 +87,20 @@ CONDITIONS_CONTRATS = {
 }
 
 
-def generer_conditions(categorie, *, numero_soumission, total, pourcentage_acompte=None):
+def _texte_plan(versements, total):
+    lignes = '; '.join(
+        f"{v['montant']} $ le {v['date'].strftime('%d/%m/%Y')}" + (f" ({v['note']})" if v.get('note') else '')
+        for v in versements
+    )
+    return (
+        f"Le total de {total} $ (taxes incluses) est payable en {len(versements)} versement"
+        f"{'s' if len(versements) > 1 else ''} selon le plan de paiement convenu : {lignes}. "
+        "Si la présente soumission est acceptée après la date du premier versement, toutes les dates "
+        "sont reportées d'autant de jours. Une facture reprenant ce plan est émise à l'acceptation."
+    )
+
+
+def generer_conditions(categorie, *, numero_soumission, total, pourcentage_acompte=None, versements=None):
     """Retourne la liste [{titre, texte}] figée pour une soumission donnée.
 
     Quand un pourcentage_acompte est fourni pour une soumission de développement, la
@@ -99,6 +112,15 @@ def generer_conditions(categorie, *, numero_soumission, total, pourcentage_acomp
         {'titre': titre, 'texte': texte.format(numero_soumission=numero_soumission, total=total)}
         for titre, texte in gabarit
     ]
+    if versements:
+        # Un plan de paiement convenu remplace toute clause de paiement par défaut ou d'acompte.
+        texte_plan = _texte_plan(versements, total)
+        clause = next((c for c in conditions if c['titre'] == 'Paiement'), None)
+        if clause:
+            clause['texte'] = texte_plan
+        else:
+            conditions.append({'titre': 'Paiement', 'texte': texte_plan})
+        return conditions
     if categorie == 'developpement' and pourcentage_acompte:
         montant_acompte = (Decimal(str(total)) * Decimal(str(pourcentage_acompte)) / Decimal('100')).quantize(Decimal('0.01'))
         pourcentage_solde = Decimal('100') - Decimal(str(pourcentage_acompte))

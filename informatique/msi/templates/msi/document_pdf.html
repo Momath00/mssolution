@@ -150,6 +150,58 @@
     .paiement strong {
         color: #1a1440;
     }
+    .totaux tr.paye td {
+        color: #16a34a;
+    }
+    .totaux tr.solde td {
+        border-top: 1px solid #ccc;
+        font-weight: bold;
+        font-size: 12pt;
+        color: #e63946;
+        padding-top: 6px;
+    }
+    .totaux tr.solde.nul td {
+        color: #16a34a;
+    }
+    h2.section {
+        font-size: 10pt;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #1a1440;
+        margin: 28px 0 8px;
+    }
+    table.plan {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 9.5pt;
+        page-break-inside: avoid;
+    }
+    table.plan th {
+        text-align: left;
+        font-size: 8pt;
+        text-transform: uppercase;
+        color: #777;
+        border-bottom: 1px solid #1a1440;
+        padding: 5px 8px;
+    }
+    table.plan td {
+        padding: 5px 8px;
+        border-bottom: 1px solid #eee;
+    }
+    table.plan .chiffre {
+        text-align: right;
+    }
+    .etat {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 10px;
+        font-size: 8pt;
+        font-weight: bold;
+    }
+    .etat-payee { background: #dcfce7; color: #15803d; }
+    .etat-partielle { background: #fef3c7; color: #b45309; }
+    .etat-en_retard { background: #fee2e2; color: #b91c1c; }
+    .etat-a_venir { background: #eef0f6; color: #555; }
 </style>
 </head>
 <body>
@@ -229,8 +281,92 @@
             <tr><td>TPS (5%)</td><td class="valeur">{{ document.montant_tps }}&nbsp;$</td></tr>
             <tr><td>TVQ (9,975%)</td><td class="valeur">{{ document.montant_tvq }}&nbsp;$</td></tr>
             <tr class="total"><td>Total</td><td class="valeur">{{ document.total }}&nbsp;$</td></tr>
+            {% if document.type_document == 'facture' and paiements %}
+            <tr class="paye"><td>Montant pay&eacute;</td><td class="valeur">&minus;&nbsp;{{ document.montant_paye }}&nbsp;$</td></tr>
+            <tr class="solde{% if not document.solde_du %} nul{% endif %}"><td>Solde d&ucirc;</td><td class="valeur">{{ document.solde_du }}&nbsp;$</td></tr>
+            {% endif %}
         </table>
     </div>
+
+    {% if echeances and document.type_document == 'soumission' %}
+    <h2 class="section">Plan de paiement propos&eacute;</h2>
+    <table class="plan">
+        <thead>
+            <tr>
+                <th>Versement</th>
+                <th>Date pr&eacute;vue</th>
+                <th class="chiffre">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in echeances %}
+            <tr>
+                <td>{{ forloop.counter }} / {{ echeances|length }}{% if e.echeance.note %} &mdash; {{ e.echeance.note }}{% endif %}</td>
+                <td>{{ e.echeance.date|date:"d/m/Y" }}</td>
+                <td class="chiffre">{{ e.echeance.montant }}&nbsp;$</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p style="font-size:8.5pt;color:#777;margin-top:6px;">
+        Si la soumission est accept&eacute;e apr&egrave;s la date du premier versement, toutes les dates sont
+        report&eacute;es d'autant. Une facture reprenant ce plan est &eacute;mise &agrave; l'acceptation.
+    </p>
+    {% elif echeances %}
+    <h2 class="section">Plan de paiement</h2>
+    <table class="plan">
+        <thead>
+            <tr>
+                <th>Versement</th>
+                <th>Date pr&eacute;vue</th>
+                <th class="chiffre">Montant</th>
+                <th class="chiffre">Pay&eacute;</th>
+                <th class="chiffre">Reste</th>
+                <th>&Eacute;tat</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in echeances %}
+            <tr>
+                <td>{{ forloop.counter }} / {{ echeances|length }}{% if e.echeance.note %} &mdash; {{ e.echeance.note }}{% endif %}</td>
+                <td>{{ e.echeance.date|date:"d/m/Y" }}</td>
+                <td class="chiffre">{{ e.echeance.montant }}&nbsp;$</td>
+                <td class="chiffre">{{ e.paye }}&nbsp;$</td>
+                <td class="chiffre">{{ e.reste }}&nbsp;$</td>
+                <td>
+                    <span class="etat etat-{{ e.statut }}">
+                        {% if e.statut == 'payee' %}Pay&eacute;{% elif e.statut == 'partielle' %}Partiel{% elif e.statut == 'en_retard' %}En retard{% else %}&Agrave; venir{% endif %}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if paiements %}
+    <h2 class="section">Paiements re&ccedil;us</h2>
+    <table class="plan">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Mode</th>
+                <th>R&eacute;f&eacute;rence</th>
+                <th class="chiffre">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in paiements %}
+            <tr>
+                <td>{{ p.date|date:"d/m/Y" }}</td>
+                <td>{{ p.get_mode_display }}</td>
+                <td>{{ p.reference|default:"—" }}</td>
+                <td class="chiffre">{{ p.montant }}&nbsp;$</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
 
     {% if document.type_document == 'facture' %}
     <div class="paiement">

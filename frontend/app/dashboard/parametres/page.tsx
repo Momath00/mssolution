@@ -4,6 +4,8 @@ import Image from 'next/image';
 import { useEffect, useState } from 'react';
 
 import { fetchClient, mediaUrl, type Coordonnees } from '@/lib/api';
+
+import RappelsReglages from './RappelsReglages';
 import { afficherToast } from '@/components/Toast';
 
 export default function ParametresPage() {
@@ -150,6 +152,10 @@ export default function ParametresPage() {
           {enCours ? 'Enregistrement…' : 'Enregistrer'}
         </button>
       </form>
+
+      <div className="mt-12 border-t border-black/10 pt-8">
+        <RappelsReglages />
+      </div>
     </div>
   );
 }

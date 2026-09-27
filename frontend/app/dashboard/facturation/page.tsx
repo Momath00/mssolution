@@ -1,21 +1,35 @@
 'use client';
 
-import { useState } from 'react';
+import { use, useEffect, useState } from 'react';
 
 import { apiUrlClient, fetchClient, type DocumentFacturation } from '@/lib/api';
+import { formaterMontant, versCents } from '@/lib/argent';
 import { useListePaginee } from '@/lib/useListePaginee';
 import { afficherToast } from '@/components/Toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
 import CatalogueManager from './CatalogueManager';
+import ComptesARecevoir from './ComptesARecevoir';
 import DocumentForm from './DocumentForm';
+import PaiementsPanel from './PaiementsPanel';
+import PlanSoumissionPanel from './PlanSoumissionPanel';
 
 const statutLabel: Record<string, string> = {
   brouillon: 'Brouillon',
   envoyee: 'Envoyée',
   acceptee: 'Acceptée',
   refusee: 'Refusée',
+  partielle: 'Partiellement payée',
   payee: 'Payée',
+};
+
+type Onglet = 'soumission' | 'facture' | 'a_recevoir' | 'catalogue';
+
+const ONGLETS: Record<Onglet, string> = {
+  soumission: 'Soumissions',
+  facture: 'Factures',
+  a_recevoir: 'Comptes à recevoir',
+  catalogue: 'Catalogue de prix',
 };
 
 const statutStyle: Record<string, string> = {
@@ -23,11 +37,37 @@ const statutStyle: Record<string, string> = {
   envoyee: 'bg-blue-100 text-blue-700',
   acceptee: 'bg-green-100 text-green-700',
   refusee: 'bg-red-100 text-red-700',
+  partielle: 'bg-amber-100 text-amber-700',
   payee: 'bg-green-100 text-green-700',
 };
 
-export default function FacturationDashboardPage() {
-  const [onglet, setOnglet] = useState<'soumission' | 'facture' | 'catalogue'>('soumission');
+function dateCourte(iso: string) {
+  return new Date(iso).toLocaleDateString('fr-CA', { day: 'numeric', month: 'short' });
+}
+
+/** Dernier courriel de suivi envoyé automatiquement pour une soumission en attente. */
+function dernierSuivi(doc: DocumentFacturation): string | null {
+  if (doc.date_alerte_expiration && doc.date_echeance && doc.date_echeance < new Date().toISOString().slice(0, 10)) {
+    return 'Expirée sans réponse';
+  }
+  if (doc.date_rappel_expiration) return `Avis d’expiration envoyé le ${dateCourte(doc.date_rappel_expiration)}`;
+  if (doc.date_relance_soumission) return `Relancée le ${dateCourte(doc.date_relance_soumission)}`;
+  if (doc.date_envoi) return `Envoyée le ${dateCourte(doc.date_envoi)}`;
+  return null;
+}
+
+function estOnglet(valeur: string | undefined): valeur is Onglet {
+  return valeur !== undefined && valeur in ONGLETS;
+}
+
+export default function FacturationDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ onglet?: string; facture?: string }>;
+}) {
+  // Liens directs depuis la vue d'ensemble : ?onglet=a_recevoir, ?facture=42 (ouvre ses paiements).
+  const parametres = use(searchParams);
+  const [onglet, setOnglet] = useState<Onglet>(estOnglet(parametres.onglet) ? parametres.onglet : 'soumission');
   const typeListe = onglet === 'facture' ? 'facture' : 'soumission';
   const {
     items: documents,
@@ -48,6 +88,28 @@ export default function FacturationDashboardPage() {
   const [aSupprimer, setASupprimer] = useState<DocumentFacturation | null>(null);
   const [suppressionEnCours, setSuppressionEnCours] = useState(false);
   const [facturationEnCours, setFacturationEnCours] = useState<number | null>(null);
+  const [enPaiement, setEnPaiement] = useState<DocumentFacturation | null>(null);
+  const [enPlanSoumission, setEnPlanSoumission] = useState<DocumentFacturation | null>(null);
+
+  function majDocument(maj: DocumentFacturation) {
+    setDocuments((prev) => prev.map((d) => (d.id === maj.id ? maj : d)));
+  }
+
+  const factureDemandee = Number(parametres.facture) || null;
+  useEffect(() => {
+    if (!factureDemandee) return;
+    fetchClient<DocumentFacturation>(`/api/documents/${factureDemandee}/`)
+      .then(setEnPaiement)
+      .catch(() => {});
+  }, [factureDemandee]);
+
+  async function ouvrirFacture(id: number) {
+    try {
+      setEnPaiement(await fetchClient<DocumentFacturation>(`/api/documents/${id}/`));
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : 'Impossible d’ouvrir la facture.');
+    }
+  }
 
   async function facturerSolde(doc: DocumentFacturation) {
     if (!doc.contrat_id) return;
@@ -67,9 +129,9 @@ export default function FacturationDashboardPage() {
     const reenvoi = doc.statut !== 'brouillon';
     setEnvoiEnCours(doc.id);
     try {
-      await fetchClient(`/api/documents/${doc.id}/envoyer/`, { method: 'POST' });
+      const maj = await fetchClient<DocumentFacturation>(`/api/documents/${doc.id}/envoyer/`, { method: 'POST' });
       afficherToast(`${doc.numero} ${reenvoi ? 'renvoyé' : 'envoyé'} au client avec succès.`);
-      setDocuments((prev) => prev.map((d) => (d.id === doc.id ? { ...d, statut: 'envoyee' } : d)));
+      majDocument(maj);
     } catch (e) {
       setErreur(e instanceof Error ? e.message : 'Erreur lors de l\'envoi.');
     } finally {
@@ -114,6 +176,34 @@ export default function FacturationDashboardPage() {
     }
   }
 
+  if (enPaiement) {
+    return (
+      <PaiementsPanel
+        key={enPaiement.id}
+        document={enPaiement}
+        onChange={(maj) => {
+          setEnPaiement(maj);
+          majDocument(maj);
+        }}
+        onRetour={() => setEnPaiement(null)}
+      />
+    );
+  }
+
+  if (enPlanSoumission) {
+    return (
+      <PlanSoumissionPanel
+        key={enPlanSoumission.id}
+        document={enPlanSoumission}
+        onChange={(maj) => {
+          setEnPlanSoumission(maj);
+          majDocument(maj);
+        }}
+        onRetour={() => setEnPlanSoumission(null)}
+      />
+    );
+  }
+
   if (enEdition) {
     return (
       <DocumentForm
@@ -133,7 +223,7 @@ export default function FacturationDashboardPage() {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-navy">Facturation</h1>
-        {onglet !== 'catalogue' && (
+        {(onglet === 'soumission' || onglet === 'facture') && (
           <button
             onClick={() => setEnEdition('nouveau')}
             className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
@@ -146,7 +236,7 @@ export default function FacturationDashboardPage() {
       {(erreur || erreurChargement) && <p className="mt-4 text-sm text-red-600">{erreur || erreurChargement}</p>}
 
       <div className="mt-6 flex gap-1 border-b border-black/10">
-        {(['soumission', 'facture', 'catalogue'] as const).map((type) => (
+        {(Object.keys(ONGLETS) as Onglet[]).map((type) => (
           <button
             key={type}
             onClick={() => setOnglet(type)}
@@ -156,7 +246,7 @@ export default function FacturationDashboardPage() {
                 : 'border-transparent text-black/40 hover:text-black/60'
             }`}
           >
-            {type === 'soumission' ? 'Soumissions' : type === 'facture' ? 'Factures' : 'Catalogue de prix'}
+            {ONGLETS[type]}
           </button>
         ))}
       </div>
@@ -164,6 +254,10 @@ export default function FacturationDashboardPage() {
       {onglet === 'catalogue' ? (
         <div className="mt-6">
           <CatalogueManager />
+        </div>
+      ) : onglet === 'a_recevoir' ? (
+        <div className="mt-6">
+          <ComptesARecevoir onOuvrirFacture={ouvrirFacture} />
         </div>
       ) : (
       <>
@@ -188,6 +282,16 @@ export default function FacturationDashboardPage() {
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-center gap-2 font-semibold text-navy">
                   {doc.numero}
+                  {doc.type_document === 'soumission' && doc.echeances.length > 0 && (
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                      Plan en {doc.echeances.length} versement{doc.echeances.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {!doc.plan_valide && (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                      Plan à corriger
+                    </span>
+                  )}
                   {doc.type_paiement !== 'complet' && (
                     <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
                       {doc.type_paiement === 'acompte' ? 'Acompte' : 'Solde'}
@@ -195,19 +299,63 @@ export default function FacturationDashboardPage() {
                     </span>
                   )}
                 </p>
-                <p className="truncate text-sm text-black/50">{doc.client_nom} · {doc.total} $</p>
+                {doc.type_document === 'facture' ? (
+                  <p className="truncate text-sm text-black/50">
+                    {doc.client_nom} · {formaterMontant(doc.total)}
+                    {versCents(doc.montant_paye) > 0 && (
+                      <>
+                        {' · '}
+                        <span className="text-green-700">payé {formaterMontant(doc.montant_paye)}</span>
+                        {versCents(doc.solde_du) > 0 && (
+                          <>
+                            {' · '}
+                            <span className="font-semibold text-navy">solde {formaterMontant(doc.solde_du)}</span>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </p>
+                ) : (
+                  <p className="truncate text-sm text-black/50">{doc.client_nom} · {doc.total} $</p>
+                )}
               </div>
               <div className="flex shrink-0 flex-col items-end gap-0.5">
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statutStyle[doc.statut]}`}>
                   {statutLabel[doc.statut]}
                 </span>
+                {doc.jours_retard > 0 && (
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                    En retard · {doc.jours_retard} j
+                  </span>
+                )}
+                {doc.type_document === 'soumission' && doc.statut === 'envoyee' && dernierSuivi(doc) && (
+                  <span className="text-[11px] text-black/40" suppressHydrationWarning>
+                    {dernierSuivi(doc)}
+                  </span>
+                )}
                 {(doc.statut === 'acceptee' || doc.statut === 'payee') && doc.date_reponse && (
                   <span className="text-[11px] text-black/40" suppressHydrationWarning>
                     Signée le {new Date(doc.date_reponse).toLocaleDateString('fr-CA')}
                   </span>
                 )}
               </div>
-              {(doc.type_document === 'facture' || doc.statut === 'acceptee' || doc.statut === 'payee') && (
+              {doc.type_document === 'facture' && (
+                <button
+                  onClick={() => setEnPaiement(doc)}
+                  className="shrink-0 rounded-full bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+                >
+                  Paiements
+                </button>
+              )}
+              {doc.type_document === 'soumission' && (
+                <button
+                  onClick={() => setEnPlanSoumission(doc)}
+                  className="shrink-0 rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+                >
+                  Plan de paiement
+                </button>
+              )}
+              {doc.type_document === 'soumission' && (doc.statut === 'acceptee' || doc.statut === 'payee') && (
                 <label className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-black/50">
                   <input
                     type="checkbox"

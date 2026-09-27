@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { apiUrlClient, fetchClient, type Contrat } from '@/lib/api';
+import { formaterDate, formaterMontant } from '@/lib/argent';
 import { afficherToast } from '@/components/Toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
@@ -21,6 +22,7 @@ const statutFactureStyle: Record<string, string> = {
   envoyee: 'bg-blue-100 text-blue-700',
   acceptee: 'bg-blue-100 text-blue-700',
   refusee: 'bg-red-100 text-red-700',
+  partielle: 'bg-amber-100 text-amber-700',
   payee: 'bg-green-100 text-green-700',
 };
 
@@ -29,6 +31,7 @@ const statutFactureLabel: Record<string, string> = {
   envoyee: 'Envoyée',
   acceptee: 'Acceptée',
   refusee: 'Refusée',
+  partielle: 'Partiellement payée',
   payee: 'Payée',
 };
 
@@ -146,7 +149,29 @@ export default function ContratsDashboardPage() {
             </button>
           </div>
 
-          {contrat.pourcentage_acompte && (
+          {contrat.echeancier_json.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-indigo-50/60 p-3 text-sm">
+              <span className="font-semibold text-navy">
+                Plan de paiement : {contrat.echeancier_json.length} versement
+                {contrat.echeancier_json.length > 1 ? 's' : ''}
+              </span>
+              {contrat.echeancier_json.map((v, i) => (
+                <span key={i} className="text-xs text-black/60">
+                  {formaterDate(v.date)} · {formaterMontant(v.montant)}
+                </span>
+              ))}
+              {contrat.factures_liees[0] && (
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statutFactureStyle[contrat.factures_liees[0].statut]}`}
+                >
+                  {contrat.factures_liees[0].numero} · {statutFactureLabel[contrat.factures_liees[0].statut]}
+                  {contrat.factures_liees[0].statut === 'partielle' && ` · solde ${contrat.factures_liees[0].solde_du} $`}
+                </span>
+              )}
+            </div>
+          )}
+
+          {!contrat.echeancier_json.length && contrat.pourcentage_acompte && (
             <div className="flex flex-wrap items-center gap-3 rounded-lg bg-black/[0.02] p-3">
               {(['acompte', 'solde'] as const).map((type) => {
                 const facture = contrat.factures_liees.find((f) => f.type_paiement === type);
@@ -164,6 +189,7 @@ export default function ContratsDashboardPage() {
                         className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statutFactureStyle[facture.statut]}`}
                       >
                         {statutFactureLabel[facture.statut]}
+                        {facture.statut === 'partielle' && ` · solde ${facture.solde_du} $`}
                       </span>
                     ) : type === 'solde' ? (
                       <button

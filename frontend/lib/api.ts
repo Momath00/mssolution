@@ -65,7 +65,49 @@ export const CATEGORIE_LABELS: Record<CategorieContrat, string> = {
   abonnement_saas: 'Abonnement annuel ExtincPro',
 };
 
-export type StatutDocument = 'brouillon' | 'envoyee' | 'acceptee' | 'refusee' | 'payee';
+export type StatutDocument = 'brouillon' | 'envoyee' | 'acceptee' | 'refusee' | 'partielle' | 'payee';
+
+export type ModePaiement = 'virement' | 'depot' | 'cheque' | 'carte' | 'comptant' | 'autre';
+
+export const MODE_PAIEMENT_LABELS: Record<ModePaiement, string> = {
+  virement: 'Virement Interac',
+  depot: 'Dépôt direct',
+  cheque: 'Chèque',
+  carte: 'Carte de crédit',
+  comptant: 'Comptant',
+  autre: 'Autre',
+};
+
+export interface Paiement {
+  id: number;
+  date: string;
+  montant: string;
+  mode: ModePaiement;
+  mode_label: string;
+  reference: string;
+  note: string;
+  date_creation: string;
+  a_preuve: boolean;
+  preuve_est_pdf: boolean;
+}
+
+export type StatutEcheance = 'payee' | 'partielle' | 'en_retard' | 'a_venir';
+
+export interface Echeance {
+  id: number;
+  date: string;
+  montant: string;
+  note: string;
+  paye: string;
+  reste: string;
+  statut: StatutEcheance;
+  date_rappel_avant: string | null;
+}
+
+export interface ProchaineEcheance {
+  date: string;
+  montant: string;
+}
 
 export interface DocumentFacturation {
   id: number;
@@ -89,14 +131,96 @@ export interface DocumentFacturation {
   contrat_lie_numero: string | null;
   contrat_id: number | null;
   solde_facturable: boolean;
+  montant_paye: string;
+  solde_du: string;
+  montant_en_retard: string;
+  jours_retard: number;
+  prochaine_echeance: ProchaineEcheance | null;
+  echeances: Echeance[];
+  paiements: Paiement[];
+  date_derniere_relance: string | null;
+  plan_valide: boolean;
+  date_envoi: string | null;
+  date_rappel_avant_echeance: string | null;
+  date_relance_soumission: string | null;
+  date_rappel_expiration: string | null;
+  date_alerte_expiration: string | null;
+}
+
+export interface ParametresRappels {
+  rappels_actifs: boolean;
+  relance_soumission_jours: number;
+  rappel_expiration_jours: number;
+  rappel_avant_versement_jours: number;
+  rappel_retard_intervalle_jours: number;
+}
+
+export interface ResultatRappels {
+  actifs: boolean;
+  simulation: boolean;
+  date: string;
+  envoyes: number;
+  echecs: number;
+  actions: {
+    type: string;
+    libelle: string;
+    document_id: number;
+    numero: string;
+    client: string;
+    detail: string;
+    statut: 'simulation' | 'envoye' | 'echec';
+    erreur: string;
+  }[];
+}
+
+export type TrancheAge = 'courant' | '1_30' | '31_60' | '61_90' | 'plus_90';
+
+type MontantsParTranche = { [K in TrancheAge as `tranche_${K}`]: number };
+
+export interface FactureARecevoir extends MontantsParTranche {
+  id: number;
+  numero: string;
+  client_id: number;
+  client_nom: string;
+  date_creation: string;
+  date_echeance: string | null;
+  total: number;
+  montant_paye: number;
+  solde_du: number;
+  montant_en_retard: number;
+  jours_retard: number;
+  tranche: TrancheAge;
+  prochaine_echeance: { date: string; montant: number } | null;
+  a_un_plan: boolean;
+  date_derniere_relance: string | null;
+}
+
+export interface ClientARecevoir extends MontantsParTranche {
+  client_id: number;
+  client_nom: string;
+  client_courriel: string;
+  nombre_factures: number;
+  solde_du: number;
+  montant_en_retard: number;
+}
+
+export interface ComptesARecevoir {
+  date: string;
+  total_du: number;
+  total_en_retard: number;
+  tranches: { cle: TrancheAge; label: string; montant: number }[];
+  factures: FactureARecevoir[];
+  clients: ClientARecevoir[];
 }
 
 export interface FactureLiee {
   id: number;
   numero: string;
   type_paiement: 'complet' | 'acompte' | 'solde';
-  statut: 'brouillon' | 'envoyee' | 'acceptee' | 'refusee' | 'payee';
+  statut: StatutDocument;
   total: string;
+  montant_paye: string;
+  solde_du: string;
   date_creation: string;
 }
 
@@ -118,6 +242,7 @@ export interface Contrat {
   montant_acompte: string | null;
   montant_solde: string | null;
   factures_liees: FactureLiee[];
+  echeancier_json: { date: string; montant: string; note: string }[];
 }
 
 export interface ClauseContrat {
@@ -140,6 +265,8 @@ export interface SoumissionPublique {
   montant_tvq: string;
   total: string;
   conditions: ClauseContrat[];
+  pourcentage_acompte: string | null;
+  echeances: { date: string; montant: string; note: string }[];
 }
 
 export interface ArticleCatalogue {

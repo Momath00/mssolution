@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 
 import { apiUrlServer, type SoumissionPublique } from '@/lib/api';
+import { formaterDate, formaterMontant } from '@/lib/argent';
 
 import ReponseSoumission from './ReponseSoumission';
 
@@ -92,6 +93,37 @@ export default async function SoumissionPubliquePage({
           <span>{soumission.total} $</span>
         </div>
       </div>
+
+      {soumission.echeances.length > 0 && (
+        <div className="mt-10">
+          <h2 className="text-xl font-bold text-navy">Plan de paiement</h2>
+          <p className="mt-1 text-sm text-black/50">
+            Le total est payable en {soumission.echeances.length} versement
+            {soumission.echeances.length > 1 ? 's' : ''}
+            {soumission.statut === 'acceptee'
+              ? ', selon les dates convenues à la signature.'
+              : '. Dates calculées pour une acceptation aujourd’hui ; si vous acceptez plus tard, elles sont reportées d’autant.'}
+          </p>
+          <div className="mt-4 overflow-x-auto rounded-xl border border-black/10">
+            <table className="w-full min-w-[360px] text-sm">
+              <tbody>
+                {soumission.echeances.map((e, i) => (
+                  <tr key={i} className={i > 0 ? 'border-t border-black/5' : ''}>
+                    <td className="px-4 py-3 text-black/40">
+                      {i + 1}/{soumission.echeances.length}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formaterDate(e.date)}
+                      {e.note && <span className="ml-1.5 text-black/50">— {e.note}</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-navy">{formaterMontant(e.montant)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {soumission.conditions.length > 0 && (
         <div className="mt-10">

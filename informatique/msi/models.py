@@ -86,6 +86,7 @@ class Document(models.Model):
         ('envoyee', 'Envoyée'),
         ('acceptee', 'Acceptée'),
         ('refusee', 'Refusée'),
+        ('partielle', 'Partiellement payée'),
         ('payee', 'Payée'),
     ]
 
@@ -118,6 +119,17 @@ class Document(models.Model):
     contrat_lie = models.ForeignKey(
         'Contrat', on_delete=models.SET_NULL, null=True, blank=True, related_name='factures_liees',
     )
+    # Suivi des courriels automatiques (voir rappels.py et la commande envoyer_rappels) —
+    # chaque date empêche d'envoyer deux fois le même rappel.
+    date_envoi = models.DateTimeField(null=True, blank=True)  # dernier envoi au client
+    # Facture : dernier rappel « paiement en retard ».
+    date_derniere_relance = models.DateTimeField(null=True, blank=True)
+    # Facture sans plan : rappel « échéance dans X jours ».
+    date_rappel_avant_echeance = models.DateTimeField(null=True, blank=True)
+    # Soumission : relance « sans réponse », rappel « expire bientôt », alerte interne « expirée ».
+    date_relance_soumission = models.DateTimeField(null=True, blank=True)
+    date_rappel_expiration = models.DateTimeField(null=True, blank=True)
+    date_alerte_expiration = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-date_creation']
@@ -159,6 +171,162 @@ class Document(models.Model):
     @property
     def total(self):
         return (self.sous_total + self.montant_tps + self.montant_tvq).quantize(Decimal('0.01'))
+
+    # --- Paiements et solde dû -------------------------------------------------------
+    # Les calculs passent par .all() (et non aggregate) pour profiter du prefetch_related
+    # fait dans les listes, sans requête supplémentaire par facture.
+
+    @property
+    def montant_paye(self):
+        return sum((p.montant for p in self.paiements.all()), Decimal('0')).quantize(Decimal('0.01'))
+
+    @property
+    def solde_du(self):
+        return max(self.total - self.montant_paye, Decimal('0')).quantize(Decimal('0.01'))
+
+    def etat_echeances(self, aujourd_hui=None):
+        """
+        Répartit les paiements reçus sur les versements prévus, du plus ancien au plus récent :
+        un paiement couvre d'abord le premier versement, le surplus passe au suivant. Donne
+        pour chaque versement ce qui a été payé, ce qu'il reste et son état.
+        """
+        aujourd_hui = aujourd_hui or timezone.localdate()
+        disponible = self.montant_paye
+        etats = []
+        for echeance in sorted(self.echeances.all(), key=lambda e: (e.date, e.pk or 0)):
+            paye = min(disponible, echeance.montant)
+            disponible -= paye
+            reste = (echeance.montant - paye).quantize(Decimal('0.01'))
+            if reste <= 0:
+                statut = 'payee'
+            elif echeance.date < aujourd_hui:
+                statut = 'en_retard'
+            elif paye > 0:
+                statut = 'partielle'
+            else:
+                statut = 'a_venir'
+            etats.append({
+                'echeance': echeance,
+                'paye': paye.quantize(Decimal('0.01')),
+                'reste': reste,
+                'statut': statut,
+            })
+        return etats
+
+    def _dates_en_retard(self, aujourd_hui):
+        """Montants et dates encore dus et déjà échus — base du retard et de l'âge des comptes."""
+        if self.type_document != 'facture' or self.statut == 'brouillon' or self.solde_du <= 0:
+            return []
+        etats = self.etat_echeances(aujourd_hui)
+        if etats:
+            return [(e['echeance'].date, e['reste']) for e in etats if e['statut'] == 'en_retard']
+        if self.date_echeance and self.date_echeance < aujourd_hui:
+            return [(self.date_echeance, self.solde_du)]
+        return []
+
+    def montant_en_retard(self, aujourd_hui=None):
+        aujourd_hui = aujourd_hui or timezone.localdate()
+        return sum((m for _, m in self._dates_en_retard(aujourd_hui)), Decimal('0')).quantize(Decimal('0.01'))
+
+    def jours_retard(self, aujourd_hui=None):
+        """Nombre de jours depuis le plus ancien montant échu et impayé (0 si rien n'est en retard)."""
+        aujourd_hui = aujourd_hui or timezone.localdate()
+        dates = [d for d, _ in self._dates_en_retard(aujourd_hui)]
+        return (aujourd_hui - min(dates)).days if dates else 0
+
+    @property
+    def en_retard(self):
+        return self.jours_retard() > 0
+
+    def prochaine_echeance(self, aujourd_hui=None):
+        """Prochain versement encore dû (date + montant restant), ou l'échéance de la facture
+        s'il n'y a pas de plan de paiement. None si tout est payé."""
+        if self.solde_du <= 0:
+            return None
+        for etat in self.etat_echeances(aujourd_hui):
+            if etat['reste'] > 0:
+                return {'date': etat['echeance'].date, 'montant': etat['reste']}
+        if self.date_echeance:
+            return {'date': self.date_echeance, 'montant': self.solde_du}
+        return None
+
+    def recalculer_statut(self):
+        """
+        Aligne le statut d'une facture sur ses paiements : aucun paiement → envoyée,
+        une partie → partiellement payée, tout → payée. Retourne l'ancien statut.
+        Les soumissions ne sont pas concernées (leur « payée » reste manuel).
+        """
+        ancien = self.statut
+        if self.type_document != 'facture':
+            return ancien
+        paye = self.montant_paye
+        if paye <= 0:
+            nouveau = 'envoyee' if ancien in ('partielle', 'payee') else ancien
+        elif paye >= self.total:
+            nouveau = 'payee'
+        else:
+            nouveau = 'partielle'
+        if nouveau != ancien:
+            self.statut = nouveau
+            self.save(update_fields=['statut'])
+        return ancien
+
+
+class Echeance(models.Model):
+    """
+    Un versement prévu du plan de paiement d'une facture — c'est toi qui choisis combien de
+    versements, à quelles dates et de quels montants (ex. 10 000 $ en 4 versements mensuels).
+    La somme des versements doit égaler le total de la facture.
+    """
+
+    document = models.ForeignKey(Document, related_name='echeances', on_delete=models.CASCADE)
+    date = models.DateField()
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    note = models.CharField(max_length=200, blank=True)
+    # Rappel « versement dans X jours » déjà envoyé pour ce versement.
+    date_rappel_avant = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['date', 'id']
+
+    def __str__(self):
+        return f'{self.document.numero} — {self.montant} $ le {self.date}'
+
+
+class Paiement(models.Model):
+    """Un montant réellement reçu du client sur une facture. Le solde dû = total − paiements."""
+
+    MODE_CHOICES = [
+        ('virement', 'Virement Interac'),
+        ('depot', 'Dépôt direct'),
+        ('cheque', 'Chèque'),
+        ('carte', 'Carte de crédit'),
+        ('comptant', 'Comptant'),
+        ('autre', 'Autre'),
+    ]
+
+    document = models.ForeignKey(Document, related_name='paiements', on_delete=models.CASCADE)
+    date = models.DateField(default=timezone.localdate)
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    mode = models.CharField(max_length=20, choices=MODE_CHOICES, default='virement')
+    reference = models.CharField(max_length=100, blank=True, help_text='N° de chèque, de transaction, etc.')
+    note = models.CharField(max_length=300, blank=True)
+    # Photo du chèque, capture du virement, PDF de l'avis de dépôt… Stockage privé (un chèque
+    # porte des numéros de compte) : jamais servi publiquement, seulement par l'API connectée.
+    preuve = models.FileField(upload_to='paiements/', storage=stockage_prive, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date', 'id']
+
+    def __str__(self):
+        return f'{self.document.numero} — {self.montant} $ le {self.date}'
+
+    def delete(self, *args, **kwargs):
+        if self.preuve:
+            self.preuve.delete(save=False)
+        return super().delete(*args, **kwargs)
 
 
 class LigneDocument(models.Model):
@@ -244,6 +412,22 @@ class Coordonnees(models.Model):
     numero_tvq = models.CharField(max_length=30, blank=True)
     courriel_comptable = models.EmailField(blank=True)
 
+    # Rappels automatiques (exécutés chaque matin par la commande envoyer_rappels).
+    # Un délai à 0 désactive ce rappel en particulier.
+    rappels_actifs = models.BooleanField(default=True)
+    relance_soumission_jours = models.PositiveSmallIntegerField(
+        default=7, help_text='Relancer une soumission sans réponse X jours après son envoi (0 = jamais).',
+    )
+    rappel_expiration_jours = models.PositiveSmallIntegerField(
+        default=3, help_text="Prévenir le client X jours avant l'expiration de la soumission (0 = jamais).",
+    )
+    rappel_avant_versement_jours = models.PositiveSmallIntegerField(
+        default=3, help_text='Rappeler un versement X jours avant sa date (0 = jamais).',
+    )
+    rappel_retard_intervalle_jours = models.PositiveSmallIntegerField(
+        default=7, help_text='Relancer un paiement en retard au plus une fois tous les X jours (0 = jamais).',
+    )
+
     def save(self, *args, **kwargs):
         self.pk = 1
         super().save(*args, **kwargs)
@@ -325,6 +509,9 @@ class Contrat(models.Model):
     pourcentage_acompte = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
 
     conditions_json = models.JSONField(default=list)
+    # Plan de paiement accepté par le client ([{date, montant, note}]), dates déjà ajustées
+    # au jour de la signature — figé comme le reste du contrat.
+    echeancier_json = models.JSONField(default=list, blank=True)
 
     nom_signataire = models.CharField(max_length=200)
     # Trait de signature dessiné à la main (souris/doigt) au moment de l'acceptation, stocké
@@ -344,6 +531,16 @@ class Contrat(models.Model):
 
     def __str__(self):
         return self.numero
+
+    @property
+    def versements(self):
+        """Plan de paiement figé, avec de vraies dates (pour les gabarits)."""
+        from datetime import date
+
+        return [
+            {'date': date.fromisoformat(v['date']), 'montant': v['montant'], 'note': v.get('note', '')}
+            for v in self.echeancier_json
+        ]
 
     @property
     def montant_acompte(self):

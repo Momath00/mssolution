@@ -230,6 +230,341 @@ def envoyer_confirmation_paiement(document):
     _client().Emails.send(payload)
 
 
+def _date_fr(d):
+    return d.strftime('%d/%m/%Y')
+
+
+def _plan_propose_html(document):
+    """Plan de paiement proposé sur une soumission (dates et montants seulement)."""
+    echeances = list(document.echeances.all())
+    if not echeances:
+        return ''
+    cellule = 'padding:6px 8px;border-bottom:1px solid #eee;'
+    lignes = ''.join(
+        f'<tr><td style="{cellule}">{i}/{len(echeances)}</td>'
+        f'<td style="{cellule}">{_date_fr(e.date)}{f" — {e.note}" if e.note else ""}</td>'
+        f'<td style="{cellule}text-align:right;">{e.montant}&nbsp;$</td></tr>'
+        for i, e in enumerate(echeances, start=1)
+    )
+    return (
+        f'<p style="margin:20px 0 6px;font-weight:bold;color:{NAVY};">Plan de paiement propos&eacute;</p>'
+        f'<table role="presentation" cellpadding="0" cellspacing="0" '
+        f'style="width:100%;font-size:13px;border-collapse:collapse;">{lignes}</table>'
+        f'<p style="font-size:12px;color:#888;">Si vous acceptez apr&egrave;s la date du premier versement, '
+        f'toutes les dates sont report&eacute;es d&rsquo;autant.</p>'
+    )
+
+
+def _plan_paiement_html(document, seulement_dus=False):
+    """Tableau des versements prévus (date, montant, reste) pour les courriels de facture."""
+    etats = document.etat_echeances()
+    if seulement_dus:
+        etats = [e for e in etats if e['reste'] > 0]
+    if not etats:
+        return ''
+    libelles = {'payee': 'Payé', 'partielle': 'Partiel', 'en_retard': 'En retard', 'a_venir': 'À venir'}
+    couleurs = {'payee': '#16a34a', 'partielle': '#b45309', 'en_retard': ACCENT, 'a_venir': '#555'}
+    cellule = 'padding:6px 8px;border-bottom:1px solid #eee;'
+    entete = f'padding:6px 8px;border-bottom:1px solid {NAVY};'
+    lignes = ''.join(
+        f'<tr>'
+        f'<td style="{cellule}">{_date_fr(e["echeance"].date)}</td>'
+        f'<td style="{cellule}text-align:right;">{e["echeance"].montant}&nbsp;$</td>'
+        f'<td style="{cellule}text-align:right;">{e["reste"]}&nbsp;$</td>'
+        f'<td style="{cellule}color:{couleurs[e["statut"]]};font-weight:bold;">{libelles[e["statut"]]}</td>'
+        f'</tr>'
+        for e in etats
+    )
+    return (
+        f'<p style="margin:20px 0 6px;font-weight:bold;color:{NAVY};">Plan de paiement</p>'
+        f'<table role="presentation" cellpadding="0" cellspacing="0" '
+        f'style="width:100%;font-size:13px;border-collapse:collapse;">'
+        f'<tr style="color:#777;font-size:11px;text-transform:uppercase;">'
+        f'<td style="{entete}">Date</td>'
+        f'<td style="{entete}text-align:right;">Montant</td>'
+        f'<td style="{entete}text-align:right;">Reste</td>'
+        f'<td style="{entete}">&Eacute;tat</td>'
+        f'</tr>{lignes}</table>'
+    )
+
+
+def _resume_solde_html(document):
+    """Encadré Total / Payé / Solde dû."""
+    return (
+        f'<table role="presentation" cellpadding="0" cellspacing="0" '
+        f'style="margin-top:16px;width:100%;background:{FOND};border-radius:8px;font-size:14px;">'
+        f'<tr><td style="padding:10px 16px 2px;">Total de la facture</td>'
+        f'<td style="padding:10px 16px 2px;text-align:right;">{document.total}&nbsp;$</td></tr>'
+        f'<tr><td style="padding:2px 16px;color:#16a34a;">Total pay&eacute;</td>'
+        f'<td style="padding:2px 16px;text-align:right;color:#16a34a;">{document.montant_paye}&nbsp;$</td></tr>'
+        f'<tr><td style="padding:2px 16px 10px;font-weight:bold;color:{NAVY};">Solde d&ucirc;</td>'
+        f'<td style="padding:2px 16px 10px;text-align:right;font-weight:bold;color:{NAVY};">'
+        f'{document.solde_du}&nbsp;$</td></tr>'
+        f'</table>'
+    )
+
+
+def _piece_jointe_facture(document):
+    pdf_bytes = generer_pdf_document(document)
+    return {
+        'filename': f'Facture_{document.numero}.pdf',
+        'content': base64.b64encode(pdf_bytes).decode('ascii'),
+    }
+
+
+def envoyer_recu_paiement(paiement):
+    """
+    Reçu envoyé au client pour CHAQUE paiement (même partiel) : montant reçu, total payé à ce
+    jour, solde restant et prochain versement attendu. La facture à jour est jointe.
+    """
+    document = paiement.document
+    coordonnees = Coordonnees.load()
+    logo = _piece_jointe_logo(coordonnees)
+
+    if document.solde_du <= 0:
+        suite_html = (
+            '<p style="margin-top:16px;"><strong>Votre facture est maintenant enti&egrave;rement '
+            'pay&eacute;e.</strong> Merci&nbsp;!</p>'
+        )
+        if document.type_paiement == 'acompte' and document.contrat_lie and document.contrat_lie.montant_solde:
+            suite_html += (
+                f'<p>Le solde du contrat de <strong>{document.contrat_lie.montant_solde}&nbsp;$</strong> '
+                f'(avant taxes) vous sera factur&eacute; &agrave; la livraison/mise en ligne du logiciel.</p>'
+            )
+    else:
+        prochaine = document.prochaine_echeance()
+        suite_html = ''
+        if prochaine:
+            suite_html = (
+                f'<p style="margin-top:16px;">Prochain versement attendu&nbsp;: '
+                f'<strong>{prochaine["montant"]}&nbsp;$</strong> le <strong>{_date_fr(prochaine["date"])}</strong>.</p>'
+            )
+        suite_html += _plan_paiement_html(document)
+
+    reference = f' (r&eacute;f.&nbsp;{paiement.reference})' if paiement.reference else ''
+    corps = (
+        f'<p>Bonjour {document.client.nom_entreprise},</p>'
+        f'<p>Nous confirmons avoir re&ccedil;u votre paiement du {_date_fr(paiement.date)} '
+        f'({paiement.get_mode_display()}{reference}) pour la facture <strong>{document.numero}</strong>.</p>'
+        f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:12px;">'
+        f'<tr><td style="background:#16a34a;border-radius:8px;padding:12px 20px;">'
+        f'<span style="color:#fff;font-weight:bold;font-size:16px;">'
+        f'Montant re&ccedil;u&nbsp;: {paiement.montant}&nbsp;$</span>'
+        f'</td></tr></table>'
+        f'{_resume_solde_html(document)}'
+        f'{suite_html}'
+        f'<p style="margin-top:20px;">Merci de votre confiance.</p>'
+    )
+    sujet = f'Paiement reçu — {document.numero}'
+    attachments = [_piece_jointe_facture(document)]
+    if logo:
+        attachments.append(logo)
+    _client().Emails.send({
+        'from': settings.RESEND_FROM_PAIEMENT,
+        'to': [document.client.courriel],
+        'reply_to': settings.REPLY_TO_FACTURE,
+        'subject': sujet,
+        'html': _gabarit_html(sujet, corps, coordonnees, logo),
+        'attachments': attachments,
+    })
+
+
+def envoyer_rappel_paiement(document):
+    """Rappel courtois au client : montant en retard, solde total et versements encore dus."""
+    coordonnees = Coordonnees.load()
+    logo = _piece_jointe_logo(coordonnees)
+    en_retard = document.montant_en_retard()
+    jours = document.jours_retard()
+
+    if en_retard > 0:
+        pluriel = 's' if jours > 1 else ''
+        intro = (
+            f'<p>Sauf erreur de notre part, un montant de <strong>{en_retard}&nbsp;$</strong> sur la facture '
+            f'<strong>{document.numero}</strong> est en retard de {jours} jour{pluriel}.</p>'
+        )
+        couleur, libelle, montant = ACCENT, 'Montant en retard', en_retard
+    else:
+        prochaine = document.prochaine_echeance()
+        date_txt = f' le <strong>{_date_fr(prochaine["date"])}</strong>' if prochaine else ''
+        intro = (
+            f'<p>Petit rappel&nbsp;: un paiement sur la facture <strong>{document.numero}</strong> '
+            f'est attendu{date_txt}.</p>'
+        )
+        couleur, libelle = NAVY, 'Montant attendu'
+        montant = prochaine['montant'] if prochaine else document.solde_du
+
+    corps = (
+        f'<p>Bonjour {document.client.nom_entreprise},</p>'
+        f'{intro}'
+        f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:12px;">'
+        f'<tr><td style="background:{couleur};border-radius:8px;padding:12px 20px;">'
+        f'<span style="color:#fff;font-weight:bold;font-size:16px;">{libelle}&nbsp;: {montant}&nbsp;$</span>'
+        f'</td></tr></table>'
+        f'{_resume_solde_html(document)}'
+        f'{_plan_paiement_html(document, seulement_dus=True)}'
+        f'<p style="margin-top:20px;">Si votre paiement a d&eacute;j&agrave; &eacute;t&eacute; envoy&eacute;, merci '
+        f'de ne pas tenir compte de ce message. Pour toute question, r&eacute;pondez simplement &agrave; ce '
+        f'courriel.</p>'
+    )
+    sujet = f'Rappel de paiement — {document.numero}'
+    attachments = [_piece_jointe_facture(document)]
+    if logo:
+        attachments.append(logo)
+    _client().Emails.send({
+        'from': settings.RESEND_FROM_FACTURE,
+        'to': [document.client.courriel],
+        'reply_to': settings.REPLY_TO_FACTURE,
+        'subject': sujet,
+        'html': _gabarit_html(sujet, corps, coordonnees, logo),
+        'attachments': attachments,
+    })
+
+
+def _boutons_soumission_html(document):
+    lien = f'{settings.SITE_URL}/soumission/{document.token}/'
+    return (
+        f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:16px;">'
+        f'<tr>'
+        f'<td style="background:#16a34a;border-radius:8px;">'
+        f'<a href="{lien}?reponse=accepter" style="display:inline-block;padding:12px 20px;color:#fff;'
+        f'font-weight:bold;font-size:14px;text-decoration:none;">Accepter la soumission</a>'
+        f'</td>'
+        f'<td style="width:12px;"></td>'
+        f'<td style="border:1px solid #ccc;border-radius:8px;">'
+        f'<a href="{lien}" style="display:inline-block;padding:12px 18px;color:#555;'
+        f'font-weight:bold;font-size:14px;text-decoration:none;">Consulter la soumission</a>'
+        f'</td>'
+        f'</tr></table>'
+    )
+
+
+def _resume_plan_soumission_html(document):
+    """Rappel informatif du plan proposé — ce n'est PAS une demande de paiement."""
+    echeances = list(document.echeances.all())
+    if not echeances:
+        return ''
+    premier = echeances[0]
+    return (
+        f'<p style="margin-top:12px;">Pour rappel, le total de <strong>{document.total}&nbsp;$</strong> est payable '
+        f'en {len(echeances)} versement{"s" if len(echeances) > 1 else ""}, le premier de '
+        f'<strong>{premier.montant}&nbsp;$</strong>.</p>'
+    )
+
+
+def _envoyer_au_client_soumission(document, sujet, corps):
+    coordonnees = Coordonnees.load()
+    logo = _piece_jointe_logo(coordonnees)
+    payload = {
+        'from': settings.RESEND_FROM_SOUMISSION,
+        'to': [document.client.courriel],
+        'reply_to': settings.REPLY_TO_SOUMISSION,
+        'subject': sujet,
+        'html': _gabarit_html(sujet, corps, coordonnees, logo),
+    }
+    if logo:
+        payload['attachments'] = [logo]
+    _client().Emails.send(payload)
+
+
+def envoyer_relance_soumission(document):
+    """Relance polie d'une soumission restée sans réponse."""
+    corps = (
+        f'<p>Bonjour {document.client.nom_contact or document.client.nom_entreprise},</p>'
+        f'<p>Nous vous avons fait parvenir la soumission <strong>{document.numero}</strong> '
+        f'({document.total}&nbsp;$). Avez-vous eu l&rsquo;occasion de la consulter&nbsp;?</p>'
+        f'{_resume_plan_soumission_html(document)}'
+        + (
+            f'<p>Elle est valide jusqu&rsquo;au <strong>{_date_fr(document.date_echeance)}</strong>.</p>'
+            if document.date_echeance else ''
+        )
+        + f'<p>Vous pouvez l&rsquo;accepter ou la refuser en un clic&nbsp;:</p>'
+        f'{_boutons_soumission_html(document)}'
+        f'<p style="margin-top:20px;">Une question ou un ajustement&nbsp;? R&eacute;pondez simplement &agrave; ce '
+        f'courriel.</p>'
+    )
+    _envoyer_au_client_soumission(document, f'Votre soumission {document.numero}', corps)
+
+
+def envoyer_rappel_expiration_soumission(document, jours_restants):
+    """Prévient le client que la soumission expire bientôt."""
+    quand = "aujourd&rsquo;hui" if jours_restants == 0 else (
+        f'dans {jours_restants} jour{"s" if jours_restants > 1 else ""}'
+    )
+    corps = (
+        f'<p>Bonjour {document.client.nom_contact or document.client.nom_entreprise},</p>'
+        f'<p>Petit rappel&nbsp;: la soumission <strong>{document.numero}</strong> ({document.total}&nbsp;$) '
+        f'expire {quand}, le <strong>{_date_fr(document.date_echeance)}</strong>. Apr&egrave;s cette date, '
+        f'les prix et disponibilit&eacute;s pourraient changer.</p>'
+        f'{_resume_plan_soumission_html(document)}'
+        f'{_boutons_soumission_html(document)}'
+    )
+    _envoyer_au_client_soumission(document, f'Votre soumission {document.numero} expire bientôt', corps)
+
+
+def envoyer_alerte_soumission_expiree(document):
+    """Alerte INTERNE (à toi, pas au client) : une soumission a expiré sans réponse."""
+    coordonnees = Coordonnees.load()
+    logo = _piece_jointe_logo(coordonnees)
+    destinataire = settings.CONTACT_NOTIFICATION_EMAIL or settings.REPLY_TO_SOUMISSION
+    corps = (
+        f'<p>La soumission <strong>{document.numero}</strong> pour <strong>{document.client.nom_entreprise}</strong> '
+        f'({document.total}&nbsp;$) a expir&eacute; le {_date_fr(document.date_echeance)} sans r&eacute;ponse '
+        f'du client.</p>'
+        f'<p>Tu peux le contacter ({document.client.courriel}), ou prolonger la date d&rsquo;&eacute;ch&eacute;ance '
+        f'et renvoyer la soumission depuis le tableau de bord.</p>'
+    )
+    payload = {
+        'from': settings.RESEND_FROM_SOUMISSION,
+        'to': [destinataire],
+        'reply_to': settings.REPLY_TO_SOUMISSION,
+        'subject': f'Soumission expirée sans réponse — {document.numero} ({document.client.nom_entreprise})',
+        'html': _gabarit_html(f'Soumission expirée — {document.numero}', corps, coordonnees, logo),
+    }
+    if logo:
+        payload['attachments'] = [logo]
+    _client().Emails.send(payload)
+
+
+def envoyer_rappel_versement_a_venir(document, versements):
+    """
+    Rappel au client quelques jours AVANT un versement : `versements` = [{date, montant}]
+    (montant = ce qu'il reste à payer sur ce versement, si déjà payé en partie).
+    """
+    coordonnees = Coordonnees.load()
+    logo = _piece_jointe_logo(coordonnees)
+    premier = versements[0]
+    cellule = 'padding:6px 8px;border-bottom:1px solid #eee;'
+    lignes = ''.join(
+        f'<tr><td style="{cellule}">{_date_fr(v["date"])}</td>'
+        f'<td style="{cellule}text-align:right;font-weight:bold;">{v["montant"]}&nbsp;$</td></tr>'
+        for v in versements
+    )
+    corps = (
+        f'<p>Bonjour {document.client.nom_entreprise},</p>'
+        f'<p>Petit rappel amical&nbsp;: un versement de <strong>{premier["montant"]}&nbsp;$</strong> est pr&eacute;vu '
+        f'le <strong>{_date_fr(premier["date"])}</strong> pour la facture <strong>{document.numero}</strong>.</p>'
+        + (
+            f'<table role="presentation" cellpadding="0" cellspacing="0" '
+            f'style="width:100%;font-size:13px;border-collapse:collapse;margin-top:8px;">{lignes}</table>'
+            if len(versements) > 1 else ''
+        )
+        + f'{_resume_solde_html(document)}'
+        f'<p style="margin-top:20px;">Paiement par virement Interac&nbsp;: {coordonnees.courriel}</p>'
+        f'<p>Si votre paiement est d&eacute;j&agrave; envoy&eacute;, merci de ne pas tenir compte de ce message.</p>'
+    )
+    sujet = f'Rappel : versement prévu le {_date_fr(premier["date"])} — {document.numero}'
+    payload = {
+        'from': settings.RESEND_FROM_FACTURE,
+        'to': [document.client.courriel],
+        'reply_to': settings.REPLY_TO_FACTURE,
+        'subject': sujet,
+        'html': _gabarit_html(sujet, corps, coordonnees, logo),
+    }
+    if logo:
+        payload['attachments'] = [logo]
+    _client().Emails.send(payload)
+
+
 def envoyer_document(document):
     coordonnees = Coordonnees.load()
     logo = _piece_jointe_logo(coordonnees)
@@ -292,6 +627,16 @@ def envoyer_document(document):
             f'<strong>ExtincPro</strong>.</p>'
         )
 
+    # Facture déjà en partie payée, ou payable en plusieurs versements : le client voit tout
+    # de suite ce qu'il reste à payer et quand.
+    solde_html = ''
+    if est_facture:
+        if document.montant_paye > 0:
+            solde_html += _resume_solde_html(document)
+        solde_html += _plan_paiement_html(document)
+    else:
+        solde_html = _plan_propose_html(document)
+
     corps = (
         f'<p>Bonjour {document.client.nom_entreprise},</p>'
         f'<p>Veuillez trouver ci-joint votre {type_label.lower()} n&deg; {document.numero}.</p>'
@@ -301,6 +646,7 @@ def envoyer_document(document):
         f'<tr><td style="background:{ACCENT};border-radius:8px;padding:12px 20px;">'
         f'<span style="color:#fff;font-weight:bold;font-size:16px;">Total&nbsp;: {document.total}&nbsp;$</span>'
         f'</td></tr></table>'
+        f'{solde_html}'
         f'{lien_signature_html}'
     )
 

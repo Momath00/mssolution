@@ -286,6 +286,28 @@
         </table>
     </div>
 
+    {% if contrat.echeancier_json %}
+    <h2 class="titre-section">Plan de paiement convenu</h2>
+    <table class="lignes">
+        <thead>
+            <tr>
+                <th>Versement</th>
+                <th>Date</th>
+                <th class="chiffre">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for v in contrat.versements %}
+            <tr>
+                <td>{{ forloop.counter }} / {{ contrat.echeancier_json|length }}{% if v.note %} &mdash; {{ v.note }}{% endif %}</td>
+                <td>{{ v.date|date:"d/m/Y" }}</td>
+                <td class="chiffre">{{ v.montant }}&nbsp;$</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
     {% if contrat.conditions_json %}
     <h2 class="titre-section">Modalités</h2>
     <ul class="modalites">

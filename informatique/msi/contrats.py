@@ -8,6 +8,7 @@ from rest_framework.exceptions import ValidationError
 from .conditions_contrats import generer_conditions
 from .emails import envoyer_document
 from .models import Contrat, Document, Evenement, LigneDocument
+from .paiements import definir_echeancier, plan_decale, plan_valide
 from .pdf import generer_pdf_contrat
 
 logger = logging.getLogger(__name__)
@@ -55,9 +56,11 @@ def creer_contrat(document, request, nom_signataire, signature_image=''):
         }
         for ligne in document.lignes.all()
     ]
+    # Plan de paiement proposé sur la soumission, ajusté au jour de la signature.
+    versements = plan_decale(document, timezone.localdate()) if plan_valide(document) else []
     conditions_json = generer_conditions(
         document.categorie, numero_soumission=document.numero, total=str(document.total),
-        pourcentage_acompte=document.pourcentage_acompte,
+        pourcentage_acompte=document.pourcentage_acompte, versements=versements,
     )
 
     contrat = Contrat.objects.create(
@@ -73,6 +76,10 @@ def creer_contrat(document, request, nom_signataire, signature_image=''):
         total=document.total,
         pourcentage_acompte=document.pourcentage_acompte,
         conditions_json=conditions_json,
+        echeancier_json=[
+            {'date': v['date'].isoformat(), 'montant': str(v['montant']), 'note': v['note']}
+            for v in versements
+        ],
         nom_signataire=nom_signataire,
         signature_image=signature_image,
         courriel_signataire=document.client.courriel,
@@ -89,10 +96,48 @@ def creer_contrat(document, request, nom_signataire, signature_image=''):
 
     _creer_evenement_contrat(document, contrat)
 
-    if contrat.categorie == 'developpement' and contrat.pourcentage_acompte:
+    if versements:
+        creer_facture_plan(contrat, versements)
+    elif contrat.categorie == 'developpement' and contrat.pourcentage_acompte:
         creer_facture_acompte(contrat)
 
     return contrat
+
+
+def creer_facture_plan(contrat, versements):
+    """
+    Soumission acceptée avec un plan de paiement : une seule facture pour le total, qui reprend
+    exactement le plan convenu, envoyée tout de suite au client (comme la facture d'acompte).
+    Ensuite, chaque paiement reçu s'enregistre sur cette facture.
+    """
+    facture = Document.objects.create(
+        numero=Document.generer_numero('facture'),
+        type_document='facture',
+        type_paiement='complet',
+        contrat_lie=contrat,
+        categorie=contrat.categorie,
+        client_id=contrat.soumission.client_id,
+        statut='brouillon',
+        created_by=contrat.soumission.created_by,
+    )
+    for ligne in contrat.lignes_json:
+        LigneDocument.objects.create(
+            document=facture, description=ligne['description'],
+            quantite=ligne['quantite'], prix_unitaire=ligne['prix_unitaire'],
+        )
+    definir_echeancier(facture, versements)
+    # Même logique que pour l'acompte : un échec d'envoi ne doit jamais annuler l'acceptation.
+    try:
+        envoyer_document(facture)
+        facture.statut = 'envoyee'
+        facture.date_envoi = timezone.now()
+        facture.save(update_fields=['statut', 'date_envoi'])
+    except Exception:
+        logger.exception(
+            "Échec de l'envoi automatique de la facture %s (plan de paiement, contrat %s)",
+            facture.numero, contrat.numero,
+        )
+    return facture
 
 
 def creer_facture_acompte(contrat):
@@ -123,7 +168,8 @@ def creer_facture_acompte(contrat):
     try:
         envoyer_document(facture)
         facture.statut = 'envoyee'
-        facture.save(update_fields=['statut'])
+        facture.date_envoi = timezone.now()
+        facture.save(update_fields=['statut', 'date_envoi'])
     except Exception:
         logger.exception(
             "Échec de l'envoi automatique de la facture d'acompte %s (contrat %s)",

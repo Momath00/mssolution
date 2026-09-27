@@ -1,8 +1,10 @@
 import logging
-from datetime import date
+import mimetypes
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 
 from django.core.files.base import ContentFile
-from django.db.models import ProtectedError
+from django.db.models import ProtectedError, Sum
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -22,6 +24,7 @@ from .emails import (
     envoyer_demande_soumission,
     envoyer_document,
     envoyer_rapport_comptable,
+    envoyer_recu_paiement,
     envoyer_soumission_refusee,
 )
 from .models import (
@@ -32,13 +35,27 @@ from .models import (
     Coordonnees,
     Depense,
     Document,
+    Echeance,
     Evenement,
+    Paiement,
     RapportComptableArchive,
     Realisation,
 )
-from .excel import generer_excel_rapport_comptable
+from .excel import generer_excel_comptes_a_recevoir, generer_excel_rapport_comptable
+from .paiements import (
+    attacher_preuve,
+    comptes_a_recevoir,
+    factures_a_recevoir,
+    ventes_emises,
+    definir_echeancier,
+    enregistrer_paiement,
+    envoyer_rappel,
+    plan_valide,
+    supprimer_paiement,
+)
 from .pagination import PaginationStandard
 from .pdf import generer_pdf_document, generer_rapport_comptable
+from .rappels import executer_rappels
 from .serializers import (
     ArticleCatalogueSerializer,
     ClientSerializer,
@@ -49,6 +66,10 @@ from .serializers import (
     DemandeSoumissionSerializer,
     DepenseSerializer,
     DocumentSerializer,
+    EcheancierSerializer,
+    ParametresRappelsSerializer,
+    EnregistrerPaiementSerializer,
+    PreuvePaiementSerializer,
     EvenementSerializer,
     RapportComptableArchiveSerializer,
     RealisationSerializer,
@@ -105,14 +126,24 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Document.objects.select_related('client', 'contrat_lie', 'contrat').prefetch_related(
-            'lignes', 'contrat__factures_liees',
+            'lignes', 'contrat__factures_liees', 'paiements', 'echeances',
         )
         type_document = self.request.query_params.get('type_document')
         if type_document:
             queryset = queryset.filter(type_document=type_document)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            queryset = queryset.filter(statut__in=statut.split(','))
         return queryset
 
+    def _document_a_jour(self, pk):
+        """Relit le document avec ses paiements/versements frais, pour la réponse."""
+        return self.get_queryset().get(pk=pk)
+
     def perform_destroy(self, instance):
+        # La suppression en cascade ne passe pas par Paiement.delete() : on retire les
+        # fichiers de preuve nous-mêmes, sinon ils resteraient orphelins sur le disque.
+        preuves = [p.preuve for p in instance.paiements.all() if p.preuve]
         try:
             instance.delete()
         except ProtectedError:
@@ -120,6 +151,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 'Impossible de supprimer cette soumission : elle a déjà un contrat signé. '
                 'Annulez le contrat si nécessaire, ou conservez la soumission comme archive.',
             )
+        for preuve in preuves:
+            preuve.delete(save=False)
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -127,16 +160,113 @@ class DocumentViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         ancien_statut = serializer.instance.statut
         document = serializer.save()
-        if ancien_statut != 'payee' and document.statut == 'payee':
+        # Les factures ont leur propre reçu, envoyé à chaque paiement enregistré.
+        if document.type_document == 'soumission' and ancien_statut != 'payee' and document.statut == 'payee':
             envoyer_confirmation_paiement(document)
 
     @action(detail=True, methods=['post'])
     def envoyer(self, request, pk=None):
         document = self.get_object()
+        if not plan_valide(document):
+            raise ValidationError(
+                'Le plan de paiement ne correspond plus au total (les lignes ont changé). '
+                'Modifiez le plan avant d’envoyer.'
+            )
         envoyer_document(document)
-        document.statut = 'envoyee'
-        document.save(update_fields=['statut'])
-        return Response(self.get_serializer(document).data)
+        document.date_envoi = timezone.now()
+        if document.type_document == 'facture':
+            # Renvoyer une facture déjà (partiellement) payée ne doit pas effacer son statut.
+            if document.statut == 'brouillon':
+                document.statut = 'envoyee'
+            document.save(update_fields=['statut', 'date_envoi'])
+            document.recalculer_statut()
+        else:
+            document.statut = 'envoyee'
+            # Un (re)envoi repart d'un cycle de relances neuf (ex. après avoir prolongé la date).
+            document.date_relance_soumission = None
+            document.date_rappel_expiration = None
+            document.date_alerte_expiration = None
+            document.save(update_fields=[
+                'statut', 'date_envoi', 'date_relance_soumission', 'date_rappel_expiration',
+                'date_alerte_expiration',
+            ])
+        return Response(self.get_serializer(self._document_a_jour(document.pk)).data)
+
+    @action(detail=True, methods=['post'])
+    def paiements(self, request, pk=None):
+        """Enregistre un montant reçu du client ; le solde et le statut se recalculent."""
+        document = self.get_object()
+        serializer = EnregistrerPaiementSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        paiement = enregistrer_paiement(
+            document, montant=data['montant'], date=data['date'], mode=data['mode'],
+            reference=data['reference'], note=data['note'], utilisateur=request.user,
+            preuve=data.get('preuve'),
+        )
+        recu_envoye = False
+        if data['envoyer_recu']:
+            # Le paiement est déjà enregistré : un courriel qui échoue ne doit pas l'annuler.
+            try:
+                envoyer_recu_paiement(paiement)
+                recu_envoye = True
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Échec de l'envoi du reçu de paiement (facture %s)", document.numero,
+                )
+        donnees = self.get_serializer(self._document_a_jour(document.pk)).data
+        return Response(
+            {'document': donnees, 'recu_envoye': recu_envoye},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['delete'], url_path=r'paiements/(?P<paiement_id>\d+)')
+    def retirer_paiement(self, request, pk=None, paiement_id=None):
+        document = self.get_object()
+        supprimer_paiement(document, int(paiement_id))
+        return Response(self.get_serializer(self._document_a_jour(document.pk)).data)
+
+    @action(detail=True, methods=['get', 'post', 'delete'], url_path=r'paiements/(?P<paiement_id>\d+)/preuve')
+    def preuve(self, request, pk=None, paiement_id=None):
+        """
+        GET : affiche la preuve (photo/PDF) d'un paiement — réservé aux utilisateurs connectés.
+        POST : ajoute ou remplace la preuve. DELETE : la retire.
+        """
+        document = self.get_object()
+        paiement = get_object_or_404(document.paiements, pk=paiement_id)
+        if request.method == 'GET':
+            if not paiement.preuve:
+                raise Http404
+            type_contenu = mimetypes.guess_type(paiement.preuve.name)[0] or 'application/octet-stream'
+            with paiement.preuve.open('rb') as fichier:
+                response = HttpResponse(fichier.read(), content_type=type_contenu)
+            nom = paiement.preuve.name.rsplit('/', 1)[-1]
+            response['Content-Disposition'] = f'inline; filename="{nom}"'
+            return response
+        if request.method == 'DELETE':
+            if paiement.preuve:
+                paiement.preuve.delete(save=True)
+        else:
+            serializer = PreuvePaiementSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            attacher_preuve(paiement, serializer.validated_data['preuve'])
+        return Response(self.get_serializer(self._document_a_jour(document.pk)).data)
+
+    @action(detail=True, methods=['put'])
+    def echeancier(self, request, pk=None):
+        """Remplace le plan de paiement (versements aux dates et montants choisis)."""
+        document = self.get_object()
+        serializer = EcheancierSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        definir_echeancier(document, serializer.validated_data['versements'])
+        return Response(self.get_serializer(self._document_a_jour(document.pk)).data)
+
+    @action(detail=True, methods=['post'])
+    def rappel(self, request, pk=None):
+        """Envoie tout de suite un rappel de paiement au client (solde et versements en retard)."""
+        document = self.get_object()
+        envoyer_rappel(document)
+        return Response(self.get_serializer(self._document_a_jour(document.pk)).data)
 
     @action(detail=True, methods=['get'])
     def pdf(self, request, pk=None):
@@ -155,7 +285,7 @@ class SoumissionPubliqueView(APIView):
 
     def get(self, request, token):
         document = get_object_or_404(
-            Document.objects.select_related('client').prefetch_related('lignes'),
+            Document.objects.select_related('client', 'contrat').prefetch_related('lignes', 'echeances'),
             token=token, type_document='soumission',
         )
         return Response(SoumissionPubliqueSerializer(document).data)
@@ -242,7 +372,9 @@ class ContratViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
 
     serializer_class = ContratSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Contrat.objects.select_related('soumission').prefetch_related('factures_liees')
+    queryset = Contrat.objects.select_related('soumission').prefetch_related(
+        'factures_liees__lignes', 'factures_liees__paiements',
+    )
 
     @action(detail=True, methods=['get'])
     def pdf(self, request, pk=None):
@@ -317,6 +449,29 @@ class CoordonneesView(APIView):
         return self.put(request)
 
 
+class ParametresRappelsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(ParametresRappelsSerializer(Coordonnees.load()).data)
+
+    def put(self, request):
+        serializer = ParametresRappelsSerializer(Coordonnees.load(), data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class ExecuterRappelsView(APIView):
+    """Lance les rappels du jour depuis le tableau de bord — ou seulement les simule."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        simulation = str(request.data.get('simulation', 'true')).lower() in ('1', 'true', 'oui')
+        return Response(executer_rappels(simulation=simulation))
+
+
 class ContactView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [AnonRateThrottle]
@@ -343,12 +498,17 @@ MOIS_ABREGES = [
     'janv', 'févr', 'mars', 'avr', 'mai', 'juin',
     'juill', 'août', 'sept', 'oct', 'nov', 'déc',
 ]
+MOIS_COMPLETS = [
+    'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+]
 
 
-def _six_derniers_mois(today):
+def _mois_precedents(today, nombre):
+    """Les `nombre` derniers mois (année, mois), du plus ancien au mois courant."""
     mois = []
     y, m = today.year, today.month
-    for _ in range(6):
+    for _ in range(nombre):
         mois.append((y, m))
         m -= 1
         if m == 0:
@@ -357,47 +517,159 @@ def _six_derniers_mois(today):
     return list(reversed(mois))
 
 
+def _premier_du_mois(y, m):
+    return date(y, m, 1)
+
+
+def _mois_suivant(y, m):
+    return (y + 1, 1) if m == 12 else (y, m + 1)
+
+
+def _encaisse(debut, fin):
+    """
+    Argent réellement reçu entre `debut` (inclus) et `fin` (exclu) : les paiements enregistrés
+    sur les factures, plus les soumissions marquées payées directement (sans facture ni
+    paiements détaillés), comptées à leur date.
+    """
+    paiements = Paiement.objects.filter(date__gte=debut, date__lt=fin).aggregate(total=Sum('montant'))['total']
+    soumissions = Document.objects.filter(
+        type_document='soumission', statut='payee',
+        date_creation__date__gte=debut, date_creation__date__lt=fin,
+    ).exclude(contrat__factures_liees__isnull=False).prefetch_related('lignes')
+    return (paiements or Decimal('0')) + sum((doc.total for doc in soumissions), Decimal('0'))
+
+
+def _a_faire(today):
+    """Ce qui demande ton attention dans les 7 prochains jours."""
+    dans_7_jours = today + timedelta(days=7)
+
+    versements = []
+    for facture in factures_a_recevoir():
+        if facture.solde_du <= 0:
+            continue
+        etats = facture.etat_echeances(today)
+        if etats:
+            candidats = [(e['echeance'].date, e['reste']) for e in etats if e['reste'] > 0]
+        else:
+            candidats = [(facture.date_echeance, facture.solde_du)] if facture.date_echeance else []
+        for date_prevue, montant in candidats:
+            if today <= date_prevue <= dans_7_jours:
+                versements.append({
+                    'facture_id': facture.id, 'numero': facture.numero,
+                    'client': facture.client.nom_entreprise, 'date': date_prevue, 'montant': montant,
+                })
+    versements.sort(key=lambda v: v['date'])
+
+    soumissions_expirent = [
+        {
+            'id': s.id, 'numero': s.numero, 'client': s.client.nom_entreprise,
+            'date_echeance': s.date_echeance, 'jours': (s.date_echeance - today).days, 'total': s.total,
+        }
+        for s in Document.objects.filter(
+            type_document='soumission', statut='envoyee',
+            date_echeance__gte=today, date_echeance__lte=dans_7_jours,
+        ).select_related('client').prefetch_related('lignes').order_by('date_echeance')
+    ]
+
+    factures_brouillon = [
+        {'id': f.id, 'numero': f.numero, 'client': f.client.nom_entreprise, 'total': f.total}
+        for f in Document.objects.filter(type_document='facture', statut='brouillon')
+        .select_related('client').prefetch_related('lignes').order_by('date_creation')
+    ]
+
+    # Rappels automatiques envoyés aujourd'hui (voir rappels.py).
+    depuis = timezone.make_aware(datetime.combine(today, time.min))
+    rappels = sum(
+        Document.objects.filter(**{f'{champ}__gte': depuis}).count()
+        for champ in (
+            'date_relance_soumission', 'date_rappel_expiration', 'date_alerte_expiration',
+            'date_derniere_relance', 'date_rappel_avant_echeance',
+        )
+    ) + Echeance.objects.filter(date_rappel_avant__gte=depuis).values('document').distinct().count()
+
+    return {
+        'versements_semaine': versements,
+        'total_versements_semaine': sum((v['montant'] for v in versements), Decimal('0')),
+        'soumissions_expirent': soumissions_expirent,
+        'factures_brouillon': factures_brouillon,
+        'rappels_aujourdhui': rappels,
+    }
+
+
 class DashboardStatsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        today = date.today()
-        # « payee » vaut revenu reçu peu importe le type — une soumission acceptée dont le
-        # client a payé directement (sans facture séparée) compte autant qu'une facture réglée.
-        revenu_mois = Document.objects.filter(
-            statut='payee',
-            date_creation__year=today.year,
-            date_creation__month=today.month,
-        )
-        chiffre_affaires_total = Document.objects.filter(statut='payee')
+        today = timezone.localdate()
 
-        revenu_par_mois = []
-        for (y, m) in _six_derniers_mois(today):
-            docs_du_mois = Document.objects.filter(
-                statut='payee', date_creation__year=y, date_creation__month=m,
-            )
-            revenu_par_mois.append({
+        # Encaissé ce mois vs le mois précédent.
+        debut_mois = _premier_du_mois(today.year, today.month)
+        y_prec, m_prec = (today.year - 1, 12) if today.month == 1 else (today.year, today.month - 1)
+        debut_mois_prec = _premier_du_mois(y_prec, m_prec)
+        demain = today + timedelta(days=1)
+
+        # Facturé vs encaissé, 12 derniers mois (une requête chacun, réparti en Python).
+        mois = _mois_precedents(today, 12)
+        debut_serie = _premier_du_mois(*mois[0])
+        facture_par_mois = {}
+        for vente in ventes_emises(debut_serie, demain):
+            local = timezone.localtime(vente.date_creation)
+            cle = (local.year, local.month)
+            facture_par_mois[cle] = facture_par_mois.get(cle, Decimal('0')) + vente.total
+        serie = []
+        for (y, m) in mois:
+            debut = _premier_du_mois(y, m)
+            fin = _premier_du_mois(*_mois_suivant(y, m))
+            serie.append({
                 'mois': f'{MOIS_ABREGES[m - 1]} {y}',
-                'total': sum((doc.total for doc in docs_du_mois), start=0),
+                'facture': facture_par_mois.get((y, m), Decimal('0')),
+                'encaisse': _encaisse(debut, fin),
             })
+
+        recevoir = comptes_a_recevoir(today)
+        en_retard = [f for f in recevoir['factures'] if f['jours_retard'] > 0]
+
+        # Taux d'acceptation des soumissions ayant reçu une réponse dans les 12 derniers mois.
+        repondues = Document.objects.filter(
+            type_document='soumission', date_reponse__date__gte=debut_serie,
+        )
+        nb_acceptees = repondues.filter(statut__in=['acceptee', 'payee']).count()
+        nb_repondues = repondues.filter(statut__in=['acceptee', 'payee', 'refusee']).count()
+
+        en_attente = Document.objects.filter(
+            type_document='soumission', statut='envoyee',
+        ).prefetch_related('lignes')
 
         soumissions_recentes = Document.objects.filter(
             type_document='soumission', statut__in=['acceptee', 'refusee', 'payee'],
         ).select_related('client').prefetch_related('lignes').order_by('-date_reponse')[:5]
 
+        il_y_a_un_an = timezone.now() - timedelta(days=365)
         return Response({
+            'date': today,
+            'mois_courant': MOIS_COMPLETS[today.month - 1],
+            'mois_precedent': MOIS_COMPLETS[m_prec - 1],
+            'encaisse_mois': _encaisse(debut_mois, demain),
+            'encaisse_mois_precedent': _encaisse(debut_mois_prec, debut_mois),
+            'comptes_a_recevoir': recevoir['total_du'],
+            'nb_factures_a_recevoir': len(recevoir['factures']),
+            'montant_en_retard': recevoir['total_en_retard'],
+            'factures_en_retard': len(en_retard),
+            'clients_en_retard': len({f['client_id'] for f in en_retard}),
+            'facture_annee': sum(
+                (v.total for v in ventes_emises(date(today.year, 1, 1), demain)), Decimal('0'),
+            ),
+            'soumissions_en_attente': en_attente.count(),
+            'soumissions_en_attente_montant': sum((s.total for s in en_attente), Decimal('0')),
+            'taux_acceptation': round(100 * nb_acceptees / nb_repondues) if nb_repondues else None,
+            'soumissions_repondues': nb_repondues,
+            'clients_actifs': Client.objects.filter(
+                documents__date_creation__gte=il_y_a_un_an,
+            ).exclude(documents__statut='brouillon').distinct().count(),
+            'clients_total': Client.objects.count(),
             'realisations_publiees': Realisation.objects.filter(statut='publie').count(),
-            'factures_totales': Document.objects.filter(type_document='facture').count(),
-            'factures_en_attente': Document.objects.filter(
-                type_document='facture', statut__in=['brouillon', 'envoyee'],
-            ).count(),
-            'revenu_du_mois': sum((doc.total for doc in revenu_mois), start=0),
-            'clients_actifs': Client.objects.count(),
-            'chiffre_affaires_total': sum((doc.total for doc in chiffre_affaires_total), start=0),
-            'revenu_par_mois': revenu_par_mois,
-            'soumissions_en_attente': Document.objects.filter(
-                type_document='soumission', statut='envoyee',
-            ).count(),
+            'serie_12_mois': serie,
+            'a_faire': _a_faire(today),
             'soumissions_recentes': [
                 {
                     'id': doc.id,
@@ -410,6 +682,27 @@ class DashboardStatsView(APIView):
                 for doc in soumissions_recentes
             ],
         })
+
+
+class ComptesARecevoirView(APIView):
+    """Tout l'argent qu'on te doit, classé par retard (âge des comptes), par facture et par client."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(comptes_a_recevoir())
+
+
+class ComptesARecevoirExcelView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        excel_bytes = generer_excel_comptes_a_recevoir(comptes_a_recevoir())
+        response = HttpResponse(
+            excel_bytes, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="Comptes-a-recevoir-{date.today()}.xlsx"'
+        return response
 
 
 def _annee_trimestre(request):

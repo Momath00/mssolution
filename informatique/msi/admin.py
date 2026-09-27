@@ -7,8 +7,10 @@ from .models import (
     Coordonnees,
     Depense,
     Document,
+    Echeance,
     Evenement,
     LigneDocument,
+    Paiement,
     Realisation,
 )
 
@@ -31,12 +33,28 @@ class LigneDocumentInline(admin.TabularInline):
     extra = 1
 
 
+class EcheanceInline(admin.TabularInline):
+    model = Echeance
+    extra = 0
+
+
+class PaiementInline(admin.TabularInline):
+    model = Paiement
+    extra = 0
+    fields = ('date', 'montant', 'mode', 'reference', 'note', 'preuve')
+
+
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
     list_display = ('numero', 'type_document', 'client', 'statut', 'date_creation', 'date_echeance')
     list_filter = ('type_document', 'statut')
     search_fields = ('numero', 'client__nom_entreprise')
-    inlines = [LigneDocumentInline]
+    inlines = [LigneDocumentInline, EcheanceInline, PaiementInline]
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        # Un paiement ajouté/retiré ici doit mettre à jour le statut comme depuis le tableau de bord.
+        form.instance.recalculer_statut()
 
 
 @admin.register(Evenement)

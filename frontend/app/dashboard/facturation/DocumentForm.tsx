@@ -41,6 +41,8 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
   const [lignes, setLignes] = useState<LigneDocument[]>(document?.lignes.length ? document.lignes : [ligneVide()]);
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Un plan de paiement remplace l'acompte en pourcentage (l'un ou l'autre).
+  const aUnPlan = Boolean(document?.echeances.length);
 
   useEffect(() => {
     fetchClient<ClientEntreprise[]>('/api/clients/').then(setClients).catch(() => {});
@@ -83,7 +85,7 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
     setEnCours(true);
     setErreur(null);
 
-    const acompteApplicable = typeDocument === 'soumission' && categorie === 'developpement';
+    const acompteApplicable = typeDocument === 'soumission' && categorie === 'developpement' && !aUnPlan;
 
     const payload = {
       type_document: typeDocument,
@@ -168,7 +170,14 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
           </p>
         </div>
 
-        {typeDocument === 'soumission' && categorie === 'developpement' && (
+        {typeDocument === 'soumission' && aUnPlan && (
+          <p className="rounded-lg bg-indigo-50 p-3 text-xs text-indigo-800">
+            Cette soumission a un plan de paiement en {document?.echeances.length} versement(s) : il remplace
+            l&apos;acompte. Si tu modifies les lignes, pense à ajuster le plan (bouton « Plan de paiement »).
+          </p>
+        )}
+
+        {typeDocument === 'soumission' && categorie === 'developpement' && !aUnPlan && (
           <div>
             <label className="mb-1 block text-sm font-medium text-navy">Acompte à la signature (%)</label>
             <input
