@@ -8,6 +8,7 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import { clientCardBorderStyle, clientColor, clientDotStyle } from '@/lib/clientColors';
 
 import CalendrierGrille from './CalendrierGrille';
+import EvenementDetail from './EvenementDetail';
 import EvenementForm from './EvenementForm';
 
 type Vue = 'liste' | 'calendrier';
@@ -102,6 +103,9 @@ export default function PlanificateurPage() {
   const [clients, setClients] = useState<ClientEntreprise[]>([]);
   const [clientFiltre, setClientFiltre] = useState<number | null>(null);
   const [vue, setVue] = useState<Vue>('liste');
+  // Id plutôt que l'objet : le panneau reflète ainsi la version rechargée après un changement.
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const enDetail = detailId !== null ? evenements.find((e) => e.id === detailId) ?? null : null;
 
   // Dérivé de `maintenant` (null avant le montage client) plutôt que `new Date()` directement :
   // le serveur (UTC dans Docker) et le navigateur (fuseau local) peuvent ne pas s'accorder sur
@@ -170,7 +174,12 @@ export default function PlanificateurPage() {
     setEnEdition('nouveau');
   }
 
+  function ouvrirDetail(ev: Evenement) {
+    setDetailId(ev.id);
+  }
+
   function ouvrirEdition(ev: Evenement) {
+    setDetailId(null);
     setDateFormulaire(ev.date);
     setHeureFormulaire(ev.heure ?? '');
     setEnEdition(ev);
@@ -289,7 +298,7 @@ export default function PlanificateurPage() {
             evenements={evenementsFiltres}
             aujourdhui={aujourdhui}
             onNouveau={ouvrirNouveau}
-            onEdit={ouvrirEdition}
+            onEdit={ouvrirDetail}
           />
         </div>
       ) : (
@@ -299,6 +308,7 @@ export default function PlanificateurPage() {
             couleurTitre="text-rose-600"
             evenements={enRetard}
             onToggle={basculerTermine}
+            onOpen={ouvrirDetail}
             onEdit={ouvrirEdition}
             onDelete={setASupprimer}
           />
@@ -306,6 +316,7 @@ export default function PlanificateurPage() {
             titre="Aujourd'hui"
             evenements={aujourdhuiListe}
             onToggle={basculerTermine}
+            onOpen={ouvrirDetail}
             onEdit={ouvrirEdition}
             onDelete={setASupprimer}
           />
@@ -313,6 +324,7 @@ export default function PlanificateurPage() {
             titre="Cette semaine"
             evenements={cetteSemaine}
             onToggle={basculerTermine}
+            onOpen={ouvrirDetail}
             onEdit={ouvrirEdition}
             onDelete={setASupprimer}
           />
@@ -320,6 +332,7 @@ export default function PlanificateurPage() {
             titre="Semaine prochaine"
             evenements={semaineProchaine}
             onToggle={basculerTermine}
+            onOpen={ouvrirDetail}
             onEdit={ouvrirEdition}
             onDelete={setASupprimer}
           />
@@ -327,6 +340,7 @@ export default function PlanificateurPage() {
             titre="Plus tard"
             evenements={plusTard}
             onToggle={basculerTermine}
+            onOpen={ouvrirDetail}
             onEdit={ouvrirEdition}
             onDelete={setASupprimer}
           />
@@ -360,6 +374,7 @@ export default function PlanificateurPage() {
                     titre=""
                     evenements={termines}
                     onToggle={basculerTermine}
+                    onOpen={ouvrirDetail}
                     onEdit={ouvrirEdition}
                     onDelete={setASupprimer}
                   />
@@ -368,6 +383,19 @@ export default function PlanificateurPage() {
             </div>
           )}
         </div>
+      )}
+
+      {enDetail && (
+        <EvenementDetail
+          evenement={enDetail}
+          onClose={() => setDetailId(null)}
+          onEdit={ouvrirEdition}
+          onToggle={basculerTermine}
+          onDelete={(ev) => {
+            setDetailId(null);
+            setASupprimer(ev);
+          }}
+        />
       )}
 
       {enEdition && (
@@ -410,6 +438,7 @@ function SectionCartes({
   couleurTitre,
   evenements,
   onToggle,
+  onOpen,
   onEdit,
   onDelete,
 }: {
@@ -417,6 +446,7 @@ function SectionCartes({
   couleurTitre?: string;
   evenements: Evenement[];
   onToggle: (ev: Evenement) => void;
+  onOpen: (ev: Evenement) => void;
   onEdit: (ev: Evenement) => void;
   onDelete: (ev: Evenement) => void;
 }) {
@@ -431,7 +461,7 @@ function SectionCartes({
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {evenements.map((ev) => (
-          <EvenementCarte key={ev.id} ev={ev} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} />
+          <EvenementCarte key={ev.id} ev={ev} onToggle={onToggle} onOpen={onOpen} onEdit={onEdit} onDelete={onDelete} />
         ))}
       </div>
     </div>
@@ -441,11 +471,13 @@ function SectionCartes({
 function EvenementCarte({
   ev,
   onToggle,
+  onOpen,
   onEdit,
   onDelete,
 }: {
   ev: Evenement;
   onToggle: (ev: Evenement) => void;
+  onOpen: (ev: Evenement) => void;
   onEdit: (ev: Evenement) => void;
   onDelete: (ev: Evenement) => void;
 }) {
@@ -460,10 +492,19 @@ function EvenementCarte({
 
   return (
     <div
-      className={`group relative flex flex-col gap-3 rounded-xl border p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
+      className={`group relative flex cursor-pointer flex-col gap-3 rounded-xl border p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
         ev.termine ? 'border-black/5 bg-white opacity-60' : type.carte
       } ${bordureClient ? 'border-l-4' : ''}`}
       style={bordureClient ?? undefined}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(ev)}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onOpen(ev);
+        }
+      }}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -489,7 +530,10 @@ function EvenementCarte({
         </div>
         <button
           type="button"
-          onClick={() => onToggle(ev)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle(ev);
+          }}
           aria-label="Marquer comme terminé"
           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all active:scale-90 ${
             ev.termine ? 'border-accent bg-accent' : 'border-black/15 hover:border-accent'
@@ -532,7 +576,10 @@ function EvenementCarte({
         <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             type="button"
-            onClick={() => onEdit(ev)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(ev);
+            }}
             aria-label="Modifier"
             className="rounded-full p-1.5 text-black/30 transition-colors hover:bg-black/5 hover:text-navy"
           >
@@ -547,7 +594,10 @@ function EvenementCarte({
           </button>
           <button
             type="button"
-            onClick={() => onDelete(ev)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(ev);
+            }}
             aria-label="Supprimer"
             className="rounded-full p-1.5 text-black/30 transition-colors hover:bg-rose-50 hover:text-rose-600"
           >
