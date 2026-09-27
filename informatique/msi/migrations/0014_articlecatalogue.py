@@ -34,7 +34,7 @@ GRILLE_INITIALE = [
         '4200',
         'unique',
     ),
-    ('Système de facturation et soumission', '', '3300', 'unique'),
+    ('Système de facturation et soumission', '', '5200', 'unique'),
     ('Hébergement serveur et ressources', 'Abonnement annuel', '420', 'annuel'),
     ('Système de messagerie électronique', 'Abonnement annuel', '360', 'annuel'),
     ('Maintenance annuelle', '', '1200', 'annuel'),
