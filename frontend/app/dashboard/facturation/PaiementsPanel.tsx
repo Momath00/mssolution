@@ -575,6 +575,7 @@ export default function PaiementsPanel({ document: doc, onChange, onRetour }: Pr
         )}
 
         {editionPlan && (
+          <div className="mt-4">
           <PlanPaiementEditor
             document={doc}
             depotParDefaut={
@@ -589,6 +590,7 @@ export default function PaiementsPanel({ document: doc, onChange, onRetour }: Pr
             }}
             onCancel={() => setEditionPlan(false)}
           />
+          </div>
         )}
       </section>
 

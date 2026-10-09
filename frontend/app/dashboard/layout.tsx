@@ -56,6 +56,18 @@ const liens = [
     ),
   },
   {
+    href: '/dashboard/extincpro',
+    label: 'ExtincPro',
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+        d="M12 3c.5 3-2.5 4.5-2.5 7.5a2.5 2.5 0 0 0 5 0c0-.9-.3-1.7-.8-2.4 2 .9 3.8 3.1 3.8 6.1A5.5 5.5 0 0 1 12 19.7a5.5 5.5 0 0 1-5.5-5.5C6.5 9 12 7.5 12 3Z"
+      />
+    ),
+  },
+  {
     href: '/dashboard/contrats',
     label: 'Contrats',
     icon: (
@@ -110,6 +122,7 @@ const titres: Record<string, string> = {
   '/dashboard/realisations': 'Réalisations',
   '/dashboard/clients': 'Clients',
   '/dashboard/facturation': 'Facturation',
+  '/dashboard/extincpro': 'ExtincPro',
   '/dashboard/contrats': 'Contrats',
   '/dashboard/depenses': 'Dépenses',
   '/dashboard/planificateur': 'Planificateur',

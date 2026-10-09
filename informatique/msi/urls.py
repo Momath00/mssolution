@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from . import views_extincpro
 from .auth_views import CookieTokenObtainPairView, CookieTokenRefreshView, LogoutView
 from .views import (
     ArticleCatalogueViewSet,
@@ -65,5 +66,21 @@ urlpatterns = [
     path('rapport-comptable/', RapportComptableView.as_view(), name='rapport-comptable'),
     path('rapport-comptable/excel/', RapportComptableExcelView.as_view(), name='rapport-comptable-excel'),
     path('rapport-comptable/envoyer/', RapportComptableEnvoyerView.as_view(), name='rapport-comptable-envoyer'),
+    # ExtincPro (logiciel de MS Solution) — voir msi/extincpro.py
+    path('extincpro/etat/', views_extincpro.ExtincProEtatView.as_view(), name='extincpro-etat'),
+    path('extincpro/a-lier/', views_extincpro.OrganisationsALierView.as_view(), name='extincpro-a-lier'),
+    path(
+        'extincpro/a-lier/<int:organisation_id>/lier/',
+        views_extincpro.LierOrganisationView.as_view(),
+        name='extincpro-lier',
+    ),
+    path('extincpro/alertes/', views_extincpro.AlertesView.as_view(), name='extincpro-alertes'),
+    path('extincpro/modules/', views_extincpro.ModulesView.as_view(), name='extincpro-modules'),
+    path('clients/<int:pk>/extincpro/', views_extincpro.ClientExtincProView.as_view(), name='client-extincpro'),
+    path(
+        'clients/<int:pk>/extincpro/<str:action>/',
+        views_extincpro.ClientExtincProActionView.as_view(),
+        name='client-extincpro-action',
+    ),
     path('', include(router.urls)),
 ]

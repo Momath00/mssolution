@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { apiUrlClient, fetchClient, type Evenement, type TypeEvenement } from '@/lib/api';
+import { apiUrlClient, fetchClient, type AlerteExtincPro, type Evenement, type TypeEvenement } from '@/lib/api';
 import { formaterDate, formaterMontant } from '@/lib/argent';
 import FactureEncaisseChart, { type PointFactureEncaisse } from '@/components/FactureEncaisseChart';
 import { clientDotStyle } from '@/lib/clientColors';
@@ -50,14 +50,55 @@ interface Stats {
   clients_total: number;
   realisations_publiees: number;
   serie_12_mois: PointFactureEncaisse[];
+  // Ligne d'affaires ExtincPro, calculée sur la base de MS Solution (toujours disponible).
+  extincpro: {
+    encaisse_mois: number;
+    encaisse_mois_precedent: number;
+    facture_annee: number;
+    part_annee: number | null;
+    abonnes: number;
+    resilies: number;
+  };
   a_faire: {
-    versements_semaine: { facture_id: number; numero: string; client: string; date: string; montant: number }[];
+    versements_semaine: {
+      facture_id: number; numero: string; client: string; date: string; montant: number; extincpro: boolean;
+    }[];
     total_versements_semaine: number;
     soumissions_expirent: { id: number; numero: string; client: string; date_echeance: string; jours: number; total: number }[];
     factures_brouillon: { id: number; numero: string; client: string; total: number }[];
     rappels_aujourdhui: number;
   };
   soumissions_recentes: SoumissionRecente[];
+}
+
+// État en direct des organisations, lu dans ExtincPro (peut être indisponible).
+interface EtatExtincPro {
+  configure: boolean;
+  erreur?: string;
+  a_lier: number;
+  a_lier_noms: string[];
+  alertes: number;
+  alertes_detail: AlerteExtincPro[];
+  nb_actifs: number;
+  nb_bloques: number;
+}
+
+function BadgeExtincPro() {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full bg-navy px-1.5 py-0.5 text-[9px] font-bold text-white">
+      Extinc<span className="text-accent">Pro</span>
+    </span>
+  );
+}
+
+function MiniStat({ libelle, valeur, detail }: { libelle: string; valeur: React.ReactNode; detail?: React.ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-black/10 bg-white p-4">
+      <p className="text-xs text-black/55">{libelle}</p>
+      <p className="mt-1 whitespace-nowrap text-xl font-bold tabular-nums text-navy">{valeur}</p>
+      {detail && <div className="mt-0.5 text-xs text-black/50">{detail}</div>}
+    </div>
+  );
 }
 
 const STATUT_SOUMISSION: Record<'acceptee' | 'refusee' | 'payee', { label: string; badge: string }> = {
@@ -76,6 +117,12 @@ const ICONES = {
   hausse: 'm4.5 15.75 7.5-7.5 7.5 7.5',
   baisse: 'm19.5 8.25-7.5 7.5-7.5-7.5',
   fleche: 'm8.25 4.5 7.5 7.5-7.5 7.5',
+  flamme:
+    'M12 3c.5 3-2.5 4.5-2.5 7.5a2.5 2.5 0 0 0 5 0c0-.9-.3-1.7-.8-2.4 2 .9 3.8 3.1 3.8 6.1A5.5 5.5 0 0 1 12 19.7a5.5 5.5 0 0 1-5.5-5.5C6.5 9 12 7.5 12 3Z',
+  cadenas:
+    'M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z',
+  lien:
+    'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244',
 };
 
 function Icone({ nom, className = 'h-5 w-5' }: { nom: keyof typeof ICONES; className?: string }) {
@@ -126,6 +173,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [evenements, setEvenements] = useState<Evenement[]>([]);
+  const [etatExtincPro, setEtatExtincPro] = useState<EtatExtincPro | null>(null);
 
   useEffect(() => {
     fetchClient<Stats>('/api/dashboard/stats/')
@@ -135,6 +183,11 @@ export default function DashboardPage() {
     fetchClient<Evenement[]>('/api/evenements/')
       .then(setEvenements)
       .catch(() => {});
+
+    // Chargé à part : si ExtincPro est injoignable, le reste du tableau de bord s'affiche quand même.
+    fetchClient<EtatExtincPro>('/api/extincpro/etat/')
+      .then(setEtatExtincPro)
+      .catch(() => setEtatExtincPro(null));
   }, []);
 
   const aujourdhui = toISODate(new Date());
@@ -144,11 +197,20 @@ export default function DashboardPage() {
     .slice(0, 5);
 
   const aFaire = stats?.a_faire;
+  const decisionsExtincPro = (etatExtincPro?.alertes_detail || []).filter((a) => a.type !== 'resiliee');
+  const aLierExtincPro = etatExtincPro?.a_lier_noms || [];
+  const rienExtincPro = !decisionsExtincPro.length && !aLierExtincPro.length;
   const rienAFaire =
     aFaire &&
     !aFaire.versements_semaine.length &&
     !aFaire.soumissions_expirent.length &&
-    !aFaire.factures_brouillon.length;
+    !aFaire.factures_brouillon.length &&
+    rienExtincPro;
+  const ext = stats?.extincpro;
+  const varExt =
+    ext && ext.encaisse_mois_precedent > 0
+      ? Math.round(((ext.encaisse_mois - ext.encaisse_mois_precedent) / ext.encaisse_mois_precedent) * 100)
+      : null;
   const enRetard = (stats?.montant_en_retard ?? 0) > 0;
 
   return (
@@ -233,6 +295,100 @@ export default function DashboardPage() {
         </Link>
       </div>
 
+      {/* ExtincPro */}
+      <section className="mt-6 overflow-hidden rounded-2xl border border-black/15 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-navy px-5 py-3.5">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-accent">
+              <Icone nom="flamme" className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-base font-bold text-white">
+                Extinc<span className="text-accent">Pro</span>
+              </p>
+              <p className="text-xs text-white/60">Abonnements au logiciel</p>
+            </div>
+          </div>
+          <Link
+            href="/dashboard/extincpro"
+            className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
+          >
+            Gérer les abonnements
+            <Icone nom="fleche" className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 bg-black/[0.02] p-4 lg:grid-cols-4">
+          <MiniStat
+            libelle="Abonnés"
+            valeur={etatExtincPro?.configure && !etatExtincPro.erreur ? etatExtincPro.nb_actifs : ext ? ext.abonnes : '—'}
+            detail={
+              etatExtincPro?.configure && !etatExtincPro.erreur ? (
+                etatExtincPro.nb_bloques > 0 ? (
+                  <span className="font-semibold text-red-700">
+                    actifs · {etatExtincPro.nb_bloques} bloqué{etatExtincPro.nb_bloques > 1 ? 's' : ''}
+                  </span>
+                ) : (
+                  'actifs · aucun bloqué'
+                )
+              ) : ext ? (
+                `liés${ext.resilies ? ` · ${ext.resilies} résilié${ext.resilies > 1 ? 's' : ''}` : ''}`
+              ) : undefined
+            }
+          />
+          <MiniStat
+            libelle={`Encaissé en ${stats?.mois_courant ?? '…'}`}
+            valeur={ext ? formaterMontant(ext.encaisse_mois) : '—'}
+            detail={
+              ext &&
+              (varExt === null ? (
+                `${formaterMontant(ext.encaisse_mois_precedent)} en ${stats?.mois_precedent}`
+              ) : (
+                <span className={varExt >= 0 ? 'font-semibold text-green-700' : 'font-semibold text-red-600'}>
+                  {varExt >= 0 ? '+' : ''}
+                  {varExt} % vs {stats?.mois_precedent}
+                </span>
+              ))
+            }
+          />
+          <MiniStat
+            libelle={`Facturé en ${stats ? stats.date.slice(0, 4) : '…'}`}
+            valeur={ext ? formaterMontant(ext.facture_annee) : '—'}
+            detail={
+              ext?.part_annee != null && (
+                <span className="flex items-center gap-2">
+                  <span className="h-1.5 w-12 overflow-hidden rounded-full bg-black/10">
+                    <span className="block h-full rounded-full bg-accent" style={{ width: `${ext.part_annee}%` }} />
+                  </span>
+                  {ext.part_annee} % de ton chiffre d&apos;affaires
+                </span>
+              )
+            }
+          />
+          <MiniStat
+            libelle="À décider"
+            valeur={
+              etatExtincPro?.configure && !etatExtincPro.erreur ? (
+                <span className={decisionsExtincPro.length ? 'text-red-700' : 'text-green-700'}>
+                  {decisionsExtincPro.length + etatExtincPro.a_lier}
+                </span>
+              ) : (
+                '—'
+              )
+            }
+            detail={
+              !etatExtincPro
+                ? 'Chargement…'
+                : !etatExtincPro.configure
+                  ? 'Intégration non configurée'
+                  : etatExtincPro.erreur
+                    ? 'ExtincPro injoignable'
+                    : `${decisionsExtincPro.length} blocage(s) · ${etatExtincPro.a_lier} à lier`
+            }
+          />
+        </div>
+      </section>
+
       {/* À faire cette semaine */}
       <div className="mt-6 rounded-xl border border-black/5 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -250,7 +406,7 @@ export default function DashboardPage() {
         {rienAFaire && <p className="mt-3 text-sm text-black/40">Rien d&apos;urgent cette semaine.</p>}
 
         {aFaire && !rienAFaire && (
-          <div className="mt-4 grid gap-5 lg:grid-cols-3">
+          <div className="mt-4 grid gap-x-8 gap-y-5 md:grid-cols-2">
             {aFaire.versements_semaine.length > 0 && (
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-black/40">
@@ -263,9 +419,12 @@ export default function DashboardPage() {
                         href={`/dashboard/facturation?onglet=facture&facture=${v.facture_id}`}
                         className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-black/[0.03]"
                       >
-                        <span className="min-w-0 truncate">
-                          <span className="font-medium text-navy">{v.client}</span>
-                          <span className="ml-1.5 text-xs text-black/40">{formaterDate(v.date)}</span>
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate font-medium text-navy">{v.client}</span>
+                            {v.extincpro && <BadgeExtincPro />}
+                          </span>
+                          <span className="block text-xs text-black/45">{formaterDate(v.date)}</span>
                         </span>
                         <span className="shrink-0 font-semibold text-navy">{formaterMontant(v.montant)}</span>
                       </Link>
@@ -291,6 +450,52 @@ export default function DashboardPage() {
                         </span>
                         <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                           {s.jours === 0 ? 'aujourd’hui' : `dans ${s.jours} j`}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {!rienExtincPro && (
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-black/40">
+                  ExtincPro <BadgeExtincPro />
+                </p>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {decisionsExtincPro.map((a) => (
+                    <li key={`${a.type}-${a.client_id}`}>
+                      <Link
+                        href="/dashboard/extincpro"
+                        className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-black/[0.03]"
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <Icone nom="cadenas" className={`h-3.5 w-3.5 ${a.type === 'a_bloquer' ? 'text-red-600' : 'text-green-600'}`} />
+                          <span className="truncate font-medium text-navy">{a.client_nom}</span>
+                        </span>
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            a.type === 'a_bloquer' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                          }`}
+                        >
+                          {a.type === 'a_bloquer' ? `${a.retard?.jours} j · à bloquer` : 'à débloquer'}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                  {aLierExtincPro.map((nom) => (
+                    <li key={`lier-${nom}`}>
+                      <Link
+                        href="/dashboard/extincpro"
+                        className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-black/[0.03]"
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <Icone nom="lien" className="h-3.5 w-3.5 text-amber-600" />
+                          <span className="truncate font-medium text-navy">{nom}</span>
+                        </span>
+                        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                          à lier
                         </span>
                       </Link>
                     </li>

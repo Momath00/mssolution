@@ -53,6 +53,7 @@ def creer_contrat(document, request, nom_signataire, signature_image=''):
             'quantite': str(ligne.quantite),
             'prix_unitaire': str(ligne.prix_unitaire),
             'montant': str(ligne.montant),
+            'module_extincpro': ligne.module_extincpro,
         }
         for ligne in document.lignes.all()
     ]
@@ -124,6 +125,7 @@ def creer_facture_plan(contrat, versements):
         LigneDocument.objects.create(
             document=facture, description=ligne['description'],
             quantite=ligne['quantite'], prix_unitaire=ligne['prix_unitaire'],
+            module_extincpro=ligne.get('module_extincpro', ''),
         )
     definir_echeancier(facture, versements)
     # Même logique que pour l'acompte : un échec d'envoi ne doit jamais annuler l'acceptation.

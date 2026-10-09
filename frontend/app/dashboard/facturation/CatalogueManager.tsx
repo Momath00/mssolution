@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from 'react';
 
-import { fetchClient, type ArticleCatalogue } from '@/lib/api';
+import { fetchClient, type ArticleCatalogue, type ModuleExtincPro } from '@/lib/api';
 import { afficherToast } from '@/components/Toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
-type Brouillon = Pick<ArticleCatalogue, 'nom' | 'description' | 'prix' | 'frequence'>;
+type Brouillon = Pick<ArticleCatalogue, 'nom' | 'description' | 'prix' | 'frequence' | 'module_extincpro'>;
 
-const brouillonVide: Brouillon = { nom: '', description: '', prix: '', frequence: 'unique' };
+const brouillonVide: Brouillon = { nom: '', description: '', prix: '', frequence: 'unique', module_extincpro: '' };
 
 function formatPrix(article: Pick<ArticleCatalogue, 'prix' | 'frequence'>) {
   const montant = Number(article.prix).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -30,11 +30,21 @@ export default function CatalogueManager() {
 
   useEffect(charger, []);
 
+  // Modules d'ExtincPro, pour qu'un article vendu active le bon module au paiement.
+  // Vide si l'intégration n'est pas configurée : le champ est alors masqué.
+  const [modulesExtincPro, setModulesExtincPro] = useState<ModuleExtincPro[]>([]);
+  useEffect(() => {
+    fetchClient<ModuleExtincPro[]>('/api/extincpro/modules/').then(setModulesExtincPro).catch(() => {});
+  }, []);
+
   function commencerEdition(article: ArticleCatalogue | null) {
     setErreur(null);
     if (article) {
       setEnEdition(article.id);
-      setBrouillon({ nom: article.nom, description: article.description, prix: article.prix, frequence: article.frequence });
+      setBrouillon({
+        nom: article.nom, description: article.description, prix: article.prix,
+        frequence: article.frequence, module_extincpro: article.module_extincpro || '',
+      });
     } else {
       setEnEdition('nouveau');
       setBrouillon(brouillonVide);
@@ -133,6 +143,24 @@ export default function CatalogueManager() {
           <option value="annuel">Par année</option>
         </select>
       </div>
+      {(modulesExtincPro.length > 0 || brouillon.module_extincpro) && (
+        <label className="flex flex-col gap-1 text-xs text-black/50">
+          Module ExtincPro activé au paiement (abonnement)
+          <select
+            value={brouillon.module_extincpro}
+            onChange={(e) => setBrouillon({ ...brouillon, module_extincpro: e.target.value })}
+            className="rounded-lg border border-black/25 px-3 py-2 text-sm text-black focus:border-navy focus:outline-none"
+          >
+            <option value="">Aucun — service ordinaire</option>
+            {brouillon.module_extincpro && !modulesExtincPro.some((m) => m.code === brouillon.module_extincpro) && (
+              <option value={brouillon.module_extincpro}>{brouillon.module_extincpro}</option>
+            )}
+            {modulesExtincPro.map((m) => (
+              <option key={m.code} value={m.code}>{m.nom}</option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="flex gap-2">
         <button
           type="submit"

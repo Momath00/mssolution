@@ -27,3 +27,8 @@ frontend/npm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Fichiers d'assistants IA (gardés en local, jamais versionnés)
+.claude/
+CLAUDE.md
+AGENTS.md

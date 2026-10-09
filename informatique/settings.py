@@ -51,6 +51,13 @@ REPLY_TO_SOUMISSION = config('REPLY_TO_SOUMISSION', default='soumission@mssoluti
 CONTACT_NOTIFICATION_EMAIL = config('CONTACT_NOTIFICATION_EMAIL', default='')
 
 # Taxes québécoises — ajustables sans toucher aux modèles
+# ExtincPro — logiciel de MS Solution dont la facturation se gère ici (voir msi/extincpro.py).
+# Sans URL ni clé, les écrans ExtincPro indiquent que l'intégration n'est pas configurée.
+EXTINCPRO_API_URL = config('EXTINCPRO_API_URL', default='')
+EXTINCPRO_API_KEY = config('EXTINCPRO_API_KEY', default='')
+# Jours de retard sur une facture d'abonnement avant de proposer le blocage (jamais automatique).
+EXTINCPRO_JOURS_GRACE = config('EXTINCPRO_JOURS_GRACE', default=15, cast=int)
+
 TPS_RATE = config('TPS_RATE', default='0.05', cast=float)
 TVQ_RATE = config('TVQ_RATE', default='0.09975', cast=float)
 
