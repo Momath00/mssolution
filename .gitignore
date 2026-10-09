@@ -32,3 +32,6 @@ Thumbs.db
 .claude/
 CLAUDE.md
 AGENTS.md
+
+# Caches Next.js, où qu'ils soient
+**/.next/
