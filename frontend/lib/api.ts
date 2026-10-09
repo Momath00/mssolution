@@ -46,6 +46,10 @@ export interface ClientEntreprise {
   telephone: string;
   adresse: string;
   date_creation: string;
+  // Lien avec une organisation ExtincPro (ligne d'affaires ExtincPro) — lecture seule.
+  extincpro_organisation_id?: number | null;
+  extincpro_resilie_le?: string | null;
+  est_client_extincpro?: boolean;
 }
 
 export interface LigneDocument {
@@ -54,6 +58,7 @@ export interface LigneDocument {
   quantite: string;
   prix_unitaire: string;
   montant?: string;
+  module_extincpro?: string;
 }
 
 export type CategorieContrat = 'developpement' | 'maintenance' | 'fonctionnalite' | 'abonnement_saas';
@@ -275,8 +280,70 @@ export interface ArticleCatalogue {
   description: string;
   prix: string;
   frequence: 'unique' | 'annuel';
+  module_extincpro: string;
   actif: boolean;
   ordre: number;
+}
+
+// --- ExtincPro (logiciel de MS Solution dont la facturation se gère ici) ---------------
+
+export interface ModuleExtincPro {
+  code: string;
+  nom: string;
+  actif?: boolean;
+}
+
+export interface OrganisationExtincPro {
+  id: number;
+  nom: string;
+  adresse: string;
+  langue: string;
+  est_active: boolean;
+  date_fin_essai: string | null;
+  date_creation: string;
+  ms_client_id: number | null;
+  modules: ModuleExtincPro[];
+  nb_utilisateurs: number;
+  contact: { nom: string; courriel: string; telephone: string } | null;
+  suggestions?: ClientEntreprise[];
+}
+
+export interface RetardExtincPro {
+  jours: number;
+  montant: string;
+  facture: string | null;
+}
+
+export interface ActionExtincPro {
+  id: number;
+  action: string;
+  details: Record<string, unknown>;
+  succes: boolean;
+  erreur: string;
+  utilisateur_nom: string;
+  date: string;
+}
+
+export interface ClientExtincPro {
+  lie: boolean;
+  organisation_id?: number;
+  resilie_le?: string | null;
+  jours_grace?: number;
+  retard?: RetardExtincPro;
+  journal?: ActionExtincPro[];
+  organisation?: OrganisationExtincPro | null;
+  erreur?: string | null;
+}
+
+export type TypeAlerteExtincPro = 'a_bloquer' | 'a_debloquer' | 'resiliee';
+
+export interface AlerteExtincPro {
+  type: TypeAlerteExtincPro;
+  client_id: number;
+  client_nom: string;
+  organisation_id: number;
+  organisation_nom: string | null;
+  retard: RetardExtincPro | null;
 }
 
 export interface CompteGrandLivre {

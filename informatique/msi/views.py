@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
+from . import extincpro
 from .contrats import creer_contrat, creer_facture_solde
 from .emails import (
     envoyer_confirmation_paiement,
@@ -104,12 +105,25 @@ class RealisationViewSet(viewsets.ModelViewSet):
 class ClientViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Client.objects.all()
+
+    def get_queryset(self):
+        # ?ligne=extincpro : abonnés au logiciel ExtincPro ; ?ligne=developpement : les autres.
+        qs = Client.objects.all()
+        ligne = self.request.query_params.get('ligne')
+        if ligne == 'extincpro':
+            qs = qs.filter(extincpro_organisation_id__isnull=False)
+        elif ligne == 'developpement':
+            qs = qs.filter(extincpro_organisation_id__isnull=True)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
     def perform_destroy(self, instance):
+        if instance.est_client_extincpro and not instance.extincpro_resilie_le:
+            raise ValidationError(
+                "Ce client est lié à une organisation ExtincPro : déliez-la d'abord depuis sa fiche.",
+            )
         try:
             instance.delete()
         except ProtectedError:
@@ -204,6 +218,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
             reference=data['reference'], note=data['note'], utilisateur=request.user,
             preuve=data.get('preuve'),
         )
+        # Abonnement ExtincPro : active les modules payés et retire la fin d'essai.
+        # Un échec n'annule pas le paiement — il est tracé et signalé à l'écran.
+        synchro_extincpro = extincpro.apres_paiement(paiement.document, request.user)
         recu_envoye = False
         if data['envoyer_recu']:
             # Le paiement est déjà enregistré : un courriel qui échoue ne doit pas l'annuler.
@@ -216,7 +233,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 )
         donnees = self.get_serializer(self._document_a_jour(document.pk)).data
         return Response(
-            {'document': donnees, 'recu_envoye': recu_envoye},
+            {'document': donnees, 'recu_envoye': recu_envoye, 'extincpro': synchro_extincpro},
             status=status.HTTP_201_CREATED,
         )
 
@@ -525,18 +542,23 @@ def _mois_suivant(y, m):
     return (y + 1, 1) if m == 12 else (y, m + 1)
 
 
-def _encaisse(debut, fin):
+def _encaisse(debut, fin, categorie=None):
     """
     Argent réellement reçu entre `debut` (inclus) et `fin` (exclu) : les paiements enregistrés
     sur les factures, plus les soumissions marquées payées directement (sans facture ni
-    paiements détaillés), comptées à leur date.
+    paiements détaillés), comptées à leur date. `categorie` limite à une ligne d'affaires
+    (ex. 'abonnement_saas' pour ExtincPro).
     """
-    paiements = Paiement.objects.filter(date__gte=debut, date__lt=fin).aggregate(total=Sum('montant'))['total']
+    paiements = Paiement.objects.filter(date__gte=debut, date__lt=fin)
     soumissions = Document.objects.filter(
         type_document='soumission', statut='payee',
         date_creation__date__gte=debut, date_creation__date__lt=fin,
     ).exclude(contrat__factures_liees__isnull=False).prefetch_related('lignes')
-    return (paiements or Decimal('0')) + sum((doc.total for doc in soumissions), Decimal('0'))
+    if categorie:
+        paiements = paiements.filter(document__categorie=categorie)
+        soumissions = soumissions.filter(categorie=categorie)
+    total_paiements = paiements.aggregate(total=Sum('montant'))['total']
+    return (total_paiements or Decimal('0')) + sum((doc.total for doc in soumissions), Decimal('0'))
 
 
 def _a_faire(today):
@@ -557,6 +579,7 @@ def _a_faire(today):
                 versements.append({
                     'facture_id': facture.id, 'numero': facture.numero,
                     'client': facture.client.nom_entreprise, 'date': date_prevue, 'montant': montant,
+                    'extincpro': facture.categorie == extincpro.CATEGORIE_ABONNEMENT,
                 })
     versements.sort(key=lambda v: v['date'])
 
@@ -624,6 +647,7 @@ class DashboardStatsView(APIView):
                 'mois': f'{MOIS_ABREGES[m - 1]} {y}',
                 'facture': facture_par_mois.get((y, m), Decimal('0')),
                 'encaisse': _encaisse(debut, fin),
+                'encaisse_extincpro': _encaisse(debut, fin, extincpro.CATEGORIE_ABONNEMENT),
             })
 
         recevoir = comptes_a_recevoir(today)
@@ -645,6 +669,12 @@ class DashboardStatsView(APIView):
         ).select_related('client').prefetch_related('lignes').order_by('-date_reponse')[:5]
 
         il_y_a_un_an = timezone.now() - timedelta(days=365)
+        ventes_annee = list(ventes_emises(date(today.year, 1, 1), demain))
+        facture_annee = sum((v.total for v in ventes_annee), Decimal('0'))
+        facture_annee_extincpro = sum(
+            (v.total for v in ventes_annee if v.categorie == extincpro.CATEGORIE_ABONNEMENT), Decimal('0'),
+        )
+        clients_extincpro = Client.objects.filter(extincpro_organisation_id__isnull=False)
         return Response({
             'date': today,
             'mois_courant': MOIS_COMPLETS[today.month - 1],
@@ -656,9 +686,17 @@ class DashboardStatsView(APIView):
             'montant_en_retard': recevoir['total_en_retard'],
             'factures_en_retard': len(en_retard),
             'clients_en_retard': len({f['client_id'] for f in en_retard}),
-            'facture_annee': sum(
-                (v.total for v in ventes_emises(date(today.year, 1, 1), demain)), Decimal('0'),
-            ),
+            'facture_annee': facture_annee,
+            # Ligne d'affaires ExtincPro, calculée sur ta propre base (toujours disponible).
+            # L'état en direct des organisations vient de /api/extincpro/etat/.
+            'extincpro': {
+                'encaisse_mois': _encaisse(debut_mois, demain, extincpro.CATEGORIE_ABONNEMENT),
+                'encaisse_mois_precedent': _encaisse(debut_mois_prec, debut_mois, extincpro.CATEGORIE_ABONNEMENT),
+                'facture_annee': facture_annee_extincpro,
+                'part_annee': round(100 * facture_annee_extincpro / facture_annee) if facture_annee else None,
+                'abonnes': clients_extincpro.filter(extincpro_resilie_le__isnull=True).count(),
+                'resilies': clients_extincpro.filter(extincpro_resilie_le__isnull=False).count(),
+            },
             'soumissions_en_attente': en_attente.count(),
             'soumissions_en_attente_montant': sum((s.total for s in en_attente), Decimal('0')),
             'taux_acceptation': round(100 * nb_acceptees / nb_repondues) if nb_repondues else None,

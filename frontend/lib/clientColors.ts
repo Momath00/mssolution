@@ -70,3 +70,9 @@ export function clientAvatarStyle(clientId: number | null | undefined) {
   if (!c) return null;
   return { backgroundColor: c.light };
 }
+
+// Initiales d'un nom d'entreprise pour un avatar rond (« Garage Tremblay (démo) » → « GT »).
+export function initiales(nom: string) {
+  const mots = nom.replace(/\(.*?\)/g, '').trim().split(/\s+/).filter(Boolean);
+  return ((mots[0]?.[0] || '') + (mots[1]?.[0] || '')).toUpperCase() || '?';
+}

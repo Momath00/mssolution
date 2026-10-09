@@ -5,13 +5,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiUrlClient, fetchClient, type ClientEntreprise, type Evenement, type TypeEvenement } from '@/lib/api';
 import { afficherToast } from '@/components/Toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
-import { clientCardBorderStyle, clientColor, clientDotStyle } from '@/lib/clientColors';
+import { clientDotStyle } from '@/lib/clientColors';
+import { ICONES, Icone } from '@/components/Icone';
+import Pagination, { paginer } from '@/components/Pagination';
 
 import CalendrierGrille from './CalendrierGrille';
 import EvenementDetail from './EvenementDetail';
 import EvenementForm from './EvenementForm';
 
 type Vue = 'liste' | 'calendrier';
+type FiltreType = 'tous' | TypeEvenement;
+
+const PAR_SECTION = 8;
+
+function sansAccents(texte: string) {
+  return texte.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
 
 export const TYPES: Record<
   TypeEvenement,
@@ -91,7 +100,7 @@ function ajouterJours(dateISO: string, n: number) {
 }
 
 export default function PlanificateurPage() {
-  const [evenements, setEvenements] = useState<Evenement[]>([]);
+  const [evenements, setEvenements] = useState<Evenement[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [maintenant, setMaintenant] = useState<Date | null>(null);
   const [enEdition, setEnEdition] = useState<Evenement | null | 'nouveau'>(null);
@@ -102,10 +111,12 @@ export default function PlanificateurPage() {
   const [afficherTermines, setAfficherTermines] = useState(false);
   const [clients, setClients] = useState<ClientEntreprise[]>([]);
   const [clientFiltre, setClientFiltre] = useState<number | null>(null);
+  const [typeFiltre, setTypeFiltre] = useState<FiltreType>('tous');
+  const [recherche, setRecherche] = useState('');
   const [vue, setVue] = useState<Vue>('liste');
   // Id plutôt que l'objet : le panneau reflète ainsi la version rechargée après un changement.
   const [detailId, setDetailId] = useState<number | null>(null);
-  const enDetail = detailId !== null ? evenements.find((e) => e.id === detailId) ?? null : null;
+  const enDetail = detailId !== null ? (evenements || []).find((e) => e.id === detailId) ?? null : null;
 
   // Dérivé de `maintenant` (null avant le montage client) plutôt que `new Date()` directement :
   // le serveur (UTC dans Docker) et le navigateur (fuseau local) peuvent ne pas s'accorder sur
@@ -133,10 +144,15 @@ export default function PlanificateurPage() {
     };
   }, []);
 
-  const evenementsFiltres = useMemo(
-    () => (clientFiltre ? evenements.filter((e) => e.client === clientFiltre) : evenements),
-    [evenements, clientFiltre],
-  );
+  const evenementsFiltres = useMemo(() => {
+    const terme = sansAccents(recherche.trim());
+    return (evenements || []).filter((e) => {
+      if (clientFiltre && e.client !== clientFiltre) return false;
+      if (typeFiltre !== 'tous' && e.type_evenement !== typeFiltre) return false;
+      if (!terme) return true;
+      return [e.titre, e.client_nom, e.description].some((v) => sansAccents(v || '').includes(terme));
+    });
+  }, [evenements, clientFiltre, typeFiltre, recherche]);
 
   const { enRetard, aujourdhuiListe, cetteSemaine, semaineProchaine, plusTard, termines } = useMemo(() => {
     const enRetard: Evenement[] = [];
@@ -165,6 +181,9 @@ export default function PlanificateurPage() {
         plusTard.push(ev);
       }
     }
+    // Les plus récents d'abord pour ce qui est en retard ou terminé : c'est ce qu'on cherche.
+    enRetard.reverse();
+    termines.reverse();
     return { enRetard, aujourdhuiListe, cetteSemaine, semaineProchaine, plusTard, termines };
   }, [evenementsFiltres, aujourdhui, maintenant]);
 
@@ -218,82 +237,136 @@ export default function PlanificateurPage() {
     cetteSemaine.length === 0 &&
     semaineProchaine.length === 0 &&
     plusTard.length === 0;
+  const filtresActifs = clientFiltre !== null || typeFiltre !== 'tous' || recherche.trim() !== '';
+  const actions = { onToggle: basculerTermine, onOpen: ouvrirDetail, onEdit: ouvrirEdition, onDelete: setASupprimer };
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* En-tête */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-navy">Planificateur</h1>
-          <p className="mt-1 text-sm text-black/50">Vos rendez-vous, tâches et rappels, en un coup d&apos;œil.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-navy">Planificateur</h1>
+          <p className="mt-1 text-sm text-black/55">Vos rendez-vous, tâches et rappels, en un coup d&apos;œil.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-full bg-black/[0.04] p-1">
-            <button
-              type="button"
-              onClick={() => setVue('liste')}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 ${
-                vue === 'liste' ? 'bg-white text-navy shadow-sm' : 'text-black/50 hover:text-navy'
-              }`}
-            >
-              Liste
-            </button>
-            <button
-              type="button"
-              onClick={() => setVue('calendrier')}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 ${
-                vue === 'calendrier' ? 'bg-white text-navy shadow-sm' : 'text-black/50 hover:text-navy'
-              }`}
-            >
-              Calendrier
-            </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 rounded-xl border border-black/15 bg-black/[0.04] p-1">
+            {(['liste', 'calendrier'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setVue(v)}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                  vue === v ? 'bg-white text-navy shadow-sm ring-1 ring-black/10' : 'text-black/70 hover:text-navy'
+                }`}
+              >
+                <Icone d={v === 'liste' ? ICONES.document : ICONES.calendrier} className="h-4 w-4" />
+                {v === 'liste' ? 'Liste' : 'Calendrier'}
+              </button>
+            ))}
           </div>
           <button
             onClick={() => ouvrirNouveau(aujourdhui || toISODate(new Date()))}
-            className="group flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-accent/90 hover:shadow-lg hover:shadow-accent/30 active:scale-95"
+            className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-accent/30 transition hover:-translate-y-px hover:shadow-md hover:shadow-accent/30"
           >
-            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 transition-transform duration-200 group-hover:rotate-90" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 5v14M5 12h14" />
-            </svg>
+            <Icone d={ICONES.plus} />
             Nouvel événement
           </button>
         </div>
       </div>
 
-      {erreur && <p className="mt-4 text-sm text-red-600">{erreur}</p>}
+      {erreur && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{erreur}</p>}
 
-      {clients.length > 0 && (
-        <div className="mt-6 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setClientFiltre(null)}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 ${
-              clientFiltre === null
-                ? 'bg-navy text-white'
-                : 'bg-black/[0.04] text-black/50 hover:bg-black/[0.08]'
-            }`}
-          >
-            Tous
-          </button>
-          {clients.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setClientFiltre((v) => (v === c.id ? null : c.id))}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 ${
-                clientFiltre === c.id
-                  ? 'bg-navy text-white'
-                  : 'bg-black/[0.04] text-black/50 hover:bg-black/[0.08]'
-              }`}
-            >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={clientDotStyle(c.id) ?? undefined} />
-              {c.nom_entreprise}
-            </button>
-          ))}
+      {/* Compteurs */}
+      <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { libelle: 'En retard', nombre: enRetard.length, teinte: enRetard.length ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600', icone: ICONES.horloge },
+          { libelle: "Aujourd'hui", nombre: aujourdhuiListe.length, teinte: 'bg-accent/10 text-accent', icone: ICONES.calendrier },
+          { libelle: 'Cette semaine', nombre: cetteSemaine.length, teinte: 'bg-indigo-50 text-indigo-600', icone: ICONES.calendrier },
+          { libelle: 'Plus tard', nombre: semaineProchaine.length + plusTard.length, teinte: 'bg-navy/5 text-navy', icone: ICONES.fleche },
+        ].map((c) => (
+          <div key={c.libelle} className="flex items-center gap-3 rounded-2xl border border-black/15 bg-white p-4 shadow-sm">
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${c.teinte}`}>
+              <Icone d={c.icone} className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold tabular-nums text-navy">{evenements === null ? '…' : c.nombre}</p>
+              <p className="text-[13px] text-black/55">{c.libelle}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtres */}
+      <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="flex w-fit gap-1 overflow-x-auto rounded-xl border border-black/15 bg-black/[0.04] p-1">
+          {(['tous', 'rendez_vous', 'tache', 'rappel'] as FiltreType[]).map((t) => {
+            const actif = typeFiltre === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTypeFiltre(t)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                  actif ? 'bg-white text-navy shadow-sm ring-1 ring-black/10' : 'text-black/70 hover:text-navy'
+                }`}
+              >
+                {t !== 'tous' && <span className={`h-2 w-2 rounded-full ${TYPES[t].dot}`} />}
+                {t === 'tous' ? 'Tous' : TYPES[t].label}
+              </button>
+            );
+          })}
         </div>
-      )}
+        <div className="flex flex-1 flex-col gap-3 sm:flex-row">
+          <div className="relative sm:w-64">
+            <span
+              className="pointer-events-none absolute left-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full"
+              style={clientFiltre ? clientDotStyle(clientFiltre) ?? undefined : { background: '#d4d4d8' }}
+            />
+            <select
+              value={clientFiltre ?? ''}
+              onChange={(e) => setClientFiltre(e.target.value ? Number(e.target.value) : null)}
+              className="w-full appearance-none rounded-xl border border-black/20 bg-white py-2.5 pl-8 pr-8 text-sm text-navy shadow-sm focus:border-navy focus:outline-none focus:ring-4 focus:ring-navy/10"
+              aria-label="Filtrer par client"
+            >
+              <option value="">Tous les clients</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.nom_entreprise}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-black/40">
+              <Icone d={ICONES.suivant} className="h-3.5 w-3.5" />
+            </span>
+          </div>
+          <label className="relative block flex-1">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-black/45">
+              <Icone d={ICONES.recherche} />
+            </span>
+            <input
+              type="search"
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+              placeholder="Rechercher un événement…"
+              className="w-full rounded-xl border border-black/20 bg-white py-2.5 pl-9 pr-3 text-sm text-navy shadow-sm placeholder:text-black/40 focus:border-navy focus:outline-none focus:ring-4 focus:ring-navy/10"
+            />
+          </label>
+          {filtresActifs && (
+            <button
+              type="button"
+              onClick={() => {
+                setClientFiltre(null);
+                setTypeFiltre('tous');
+                setRecherche('');
+              }}
+              className="shrink-0 rounded-xl px-3 py-2.5 text-sm font-semibold text-black/55 hover:bg-black/[0.05] hover:text-navy"
+            >
+              Effacer les filtres
+            </button>
+          )}
+        </div>
+      </div>
 
       {vue === 'calendrier' ? (
-        <div className="mt-8">
+        <div className="mt-6">
           <CalendrierGrille
             evenements={evenementsFiltres}
             aujourdhui={aujourdhui}
@@ -302,53 +375,25 @@ export default function PlanificateurPage() {
           />
         </div>
       ) : (
-        <div className="mt-8 flex flex-col gap-8">
-          <SectionCartes
-            titre="En retard"
-            couleurTitre="text-rose-600"
-            evenements={enRetard}
-            onToggle={basculerTermine}
-            onOpen={ouvrirDetail}
-            onEdit={ouvrirEdition}
-            onDelete={setASupprimer}
-          />
-          <SectionCartes
-            titre="Aujourd'hui"
-            evenements={aujourdhuiListe}
-            onToggle={basculerTermine}
-            onOpen={ouvrirDetail}
-            onEdit={ouvrirEdition}
-            onDelete={setASupprimer}
-          />
-          <SectionCartes
-            titre="Cette semaine"
-            evenements={cetteSemaine}
-            onToggle={basculerTermine}
-            onOpen={ouvrirDetail}
-            onEdit={ouvrirEdition}
-            onDelete={setASupprimer}
-          />
-          <SectionCartes
-            titre="Semaine prochaine"
-            evenements={semaineProchaine}
-            onToggle={basculerTermine}
-            onOpen={ouvrirDetail}
-            onEdit={ouvrirEdition}
-            onDelete={setASupprimer}
-          />
-          <SectionCartes
-            titre="Plus tard"
-            evenements={plusTard}
-            onToggle={basculerTermine}
-            onOpen={ouvrirDetail}
-            onEdit={ouvrirEdition}
-            onDelete={setASupprimer}
-          />
+        <div className="mt-6 flex flex-col gap-6">
+          <Section titre="En retard" accent="text-red-600" pastille="bg-red-100 text-red-700" evenements={enRetard} {...actions} />
+          <Section titre="Aujourd'hui" accent="text-accent" pastille="bg-accent/10 text-accent" evenements={aujourdhuiListe} {...actions} />
+          <Section titre="Cette semaine" evenements={cetteSemaine} {...actions} />
+          <Section titre="Semaine prochaine" evenements={semaineProchaine} {...actions} />
+          <Section titre="Plus tard" evenements={plusTard} {...actions} />
 
-          {aucunEvenementActif && (
-            <p className="rounded-xl border border-dashed border-black/10 py-10 text-center text-sm text-black/40">
-              Rien de prévu pour le moment. Cliquez sur « Nouvel événement » pour commencer.
-            </p>
+          {evenements !== null && aucunEvenementActif && (
+            <div className="flex flex-col items-center rounded-2xl border border-dashed border-black/20 px-6 py-12 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/[0.04] text-black/30">
+                <Icone d={ICONES.calendrier} className="h-6 w-6" />
+              </div>
+              <p className="mt-3 font-semibold text-navy">
+                {filtresActifs ? 'Aucun événement ne correspond à ces filtres' : 'Rien de prévu pour le moment'}
+              </p>
+              <p className="mt-1 text-sm text-black/50">
+                {filtresActifs ? 'Modifiez ou effacez les filtres.' : 'Cliquez sur « Nouvel événement » pour commencer.'}
+              </p>
+            </div>
           )}
 
           {termines.length > 0 && (
@@ -356,28 +401,14 @@ export default function PlanificateurPage() {
               <button
                 type="button"
                 onClick={() => setAfficherTermines((v) => !v)}
-                className="flex items-center gap-1.5 text-sm font-semibold text-black/40 transition-colors hover:text-navy"
+                className="flex items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-black/55 transition-colors hover:text-navy"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  className={`h-4 w-4 transition-transform ${afficherTermines ? 'rotate-90' : ''}`}
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 18l6-6-6-6" />
-                </svg>
+                <Icone d={ICONES.suivant} className={`h-4 w-4 transition-transform ${afficherTermines ? 'rotate-90' : ''}`} />
                 {afficherTermines ? 'Masquer' : 'Afficher'} les événements terminés ({termines.length})
               </button>
               {afficherTermines && (
-                <div className="mt-4">
-                  <SectionCartes
-                    titre=""
-                    evenements={termines}
-                    onToggle={basculerTermine}
-                    onOpen={ouvrirDetail}
-                    onEdit={ouvrirEdition}
-                    onDelete={setASupprimer}
-                  />
+                <div className="mt-3">
+                  <Section titre="" evenements={termines} {...actions} />
                 </div>
               )}
             </div>
@@ -433,69 +464,69 @@ export default function PlanificateurPage() {
   );
 }
 
-function SectionCartes({
-  titre,
-  couleurTitre,
-  evenements,
-  onToggle,
-  onOpen,
-  onEdit,
-  onDelete,
-}: {
-  titre: string;
-  couleurTitre?: string;
-  evenements: Evenement[];
+interface ActionsEvenement {
   onToggle: (ev: Evenement) => void;
   onOpen: (ev: Evenement) => void;
   onEdit: (ev: Evenement) => void;
   onDelete: (ev: Evenement) => void;
-}) {
+}
+
+/** Une section (En retard, Aujourd'hui…) : carte bordée, une ligne par événement, paginée. */
+function Section({
+  titre,
+  accent = 'text-navy',
+  pastille = 'bg-black/10 text-black/70',
+  evenements,
+  ...actions
+}: {
+  titre: string;
+  accent?: string;
+  pastille?: string;
+  evenements: Evenement[];
+} & ActionsEvenement) {
+  const [page, setPage] = useState(1);
   if (evenements.length === 0) return null;
+  const { nbPages, pageCourante, elements } = paginer(evenements, page, PAR_SECTION);
 
   return (
-    <div>
+    <section>
       {titre && (
-        <h2 className={`mb-3 text-sm font-bold uppercase tracking-wide ${couleurTitre ?? 'text-navy/60'}`}>
-          {titre} <span className="font-medium text-black/30">({evenements.length})</span>
-        </h2>
+        <div className="mb-3 flex items-center gap-2">
+          <h2 className={`text-sm font-bold ${accent}`}>{titre}</h2>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${pastille}`}>{evenements.length}</span>
+        </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {evenements.map((ev) => (
-          <EvenementCarte key={ev.id} ev={ev} onToggle={onToggle} onOpen={onOpen} onEdit={onEdit} onDelete={onDelete} />
-        ))}
+      <div className="overflow-hidden rounded-2xl border border-black/15 bg-white shadow-sm">
+        <ul className="divide-y divide-black/10">
+          {elements.map((ev) => (
+            <LigneEvenement key={ev.id} ev={ev} {...actions} />
+          ))}
+        </ul>
+        <Pagination
+          page={pageCourante}
+          nbPages={nbPages}
+          total={evenements.length}
+          parPage={PAR_SECTION}
+          libelle={['événement', 'événements']}
+          onChange={setPage}
+        />
       </div>
-    </div>
+    </section>
   );
 }
 
-function EvenementCarte({
-  ev,
-  onToggle,
-  onOpen,
-  onEdit,
-  onDelete,
-}: {
-  ev: Evenement;
-  onToggle: (ev: Evenement) => void;
-  onOpen: (ev: Evenement) => void;
-  onEdit: (ev: Evenement) => void;
-  onDelete: (ev: Evenement) => void;
-}) {
+function LigneEvenement({ ev, onToggle, onOpen, onEdit, onDelete }: { ev: Evenement } & ActionsEvenement) {
   const date = new Date(`${ev.date}T00:00:00`);
-  const dateLabel = date
-    .toLocaleDateString('fr-CA', { weekday: 'short', day: 'numeric', month: 'short' })
-    .replace(/^./, (c) => c.toUpperCase());
+  const jourSemaine = date.toLocaleDateString('fr-CA', { weekday: 'short' }).replace('.', '');
+  const mois = date.toLocaleDateString('fr-CA', { month: 'short' }).replace('.', '');
   const heure = formatHeure(ev.heure);
   const type = TYPES[ev.type_evenement];
-  const bordureClient = clientCardBorderStyle(ev.client);
-  const couleurClient = clientColor(ev.client);
 
   return (
-    <div
-      className={`group relative flex cursor-pointer flex-col gap-3 rounded-xl border p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
-        ev.termine ? 'border-black/5 bg-white opacity-60' : type.carte
-      } ${bordureClient ? 'border-l-4' : ''}`}
-      style={bordureClient ?? undefined}
+    <li
+      className={`group flex cursor-pointer items-center gap-4 px-5 py-3.5 transition-colors hover:bg-black/[0.02] ${
+        ev.termine ? 'opacity-60' : ''
+      }`}
       role="button"
       tabIndex={0}
       onClick={() => onOpen(ev)}
@@ -506,112 +537,95 @@ function EvenementCarte({
         }
       }}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${type.badge}`}>
-            <svg viewBox="0 0 24 24" fill="none" className="h-4.5 w-4.5" stroke="currentColor">
-              {type.icon}
-            </svg>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle(ev);
+        }}
+        aria-label={ev.termine ? 'Marquer comme à faire' : 'Marquer comme terminé'}
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition active:scale-90 ${
+          ev.termine ? 'border-green-600 bg-green-600' : 'border-black/25 hover:border-green-600'
+        }`}
+      >
+        {ev.termine && (
+          <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" stroke="white">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+      </button>
+
+      {/* Date en bloc, teintée selon le type */}
+      <div className={`flex w-12 shrink-0 flex-col items-center rounded-xl py-1.5 ${type.badge}`}>
+        <span className="text-[10px] font-semibold uppercase leading-none">{jourSemaine}</span>
+        <span className="text-lg font-bold leading-tight tabular-nums">{date.getDate()}</span>
+        <span className="text-[10px] font-medium uppercase leading-none">{mois}</span>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className={`truncate font-semibold ${ev.termine ? 'text-black/45 line-through' : 'text-navy'}`}>{ev.titre}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-black/55">
+          <span className={`inline-flex items-center gap-1.5 font-semibold ${type.badge.split(' ').find((c) => c.startsWith('text-'))}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${type.dot}`} />
+            {type.label}
           </span>
-          <div className="min-w-0">
-            <p
-              className={`truncate text-sm font-semibold ${couleurClient && !ev.termine ? '' : 'text-navy'} ${
-                ev.termine ? 'text-black/40 line-through' : ''
-              }`}
-              style={couleurClient && !ev.termine ? { color: couleurClient.text } : undefined}
-            >
-              {ev.titre}
-            </p>
-            <p className="text-xs text-black/40">
-              {dateLabel}
-              {heure && ` · ${heure}`}
-            </p>
-          </div>
+          {heure && (
+            <span className="flex items-center gap-1">
+              <Icone d={ICONES.horloge} className="h-3.5 w-3.5 text-black/35" />
+              {heure}
+            </span>
+          )}
+          {ev.client_nom && (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={clientDotStyle(ev.client) ?? undefined} />
+              <span className="truncate">{ev.client_nom}</span>
+            </span>
+          )}
         </div>
+        {ev.description && (
+          <p className="mt-1 line-clamp-1 text-[12px] text-black/45">{ev.description.replace(/\s*\n\s*/g, ' · ')}</p>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+        {ev.document && (
+          <a
+            href={apiUrlClient(`/api/documents/${ev.document}/pdf/`)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="Voir le PDF"
+            aria-label="Voir le PDF"
+            className="rounded-lg p-2 text-black/45 transition hover:bg-black/[0.05] hover:text-navy"
+          >
+            <Icone d={ICONES.telecharger} />
+          </a>
+        )}
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            onToggle(ev);
+            onEdit(ev);
           }}
-          aria-label="Marquer comme terminé"
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all active:scale-90 ${
-            ev.termine ? 'border-accent bg-accent' : 'border-black/15 hover:border-accent'
-          }`}
+          title="Modifier"
+          aria-label="Modifier"
+          className="rounded-lg p-2 text-black/45 transition hover:bg-black/[0.05] hover:text-navy"
         >
-          {ev.termine && (
-            <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" stroke="white">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
+          <Icone d={ICONES.modifier} />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(ev);
+          }}
+          title="Supprimer"
+          aria-label="Supprimer"
+          className="rounded-lg p-2 text-black/35 transition hover:bg-red-50 hover:text-red-600"
+        >
+          <Icone d={ICONES.supprimer} />
         </button>
       </div>
-
-      {ev.client_nom && (
-        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-black/[0.04] px-2 py-0.5 text-xs font-medium text-black/60">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={clientDotStyle(ev.client) ?? undefined} />
-          {ev.client_nom}
-        </span>
-      )}
-
-      {ev.description && (
-        <p className="line-clamp-3 whitespace-pre-line text-xs leading-relaxed text-black/50">{ev.description}</p>
-      )}
-
-      <div className="mt-auto flex items-center justify-between pt-1">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-black/30">{type.label}</span>
-          {ev.document && (
-            <a
-              href={apiUrlClient(`/api/documents/${ev.document}/pdf/`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="text-[11px] font-semibold text-accent hover:underline"
-            >
-              Voir le PDF
-            </a>
-          )}
-        </div>
-        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(ev);
-            }}
-            aria-label="Modifier"
-            className="rounded-full p-1.5 text-black/30 transition-colors hover:bg-black/5 hover:text-navy"
-          >
-            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.8}
-                d="M16.862 4.487a2.1 2.1 0 113 3L7.5 19.85l-4 1 1-4L16.862 4.487Z"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(ev);
-            }}
-            aria-label="Supprimer"
-            className="rounded-full p-1.5 text-black/30 transition-colors hover:bg-rose-50 hover:text-rose-600"
-          >
-            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.8}
-                d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-.7 12.1A2 2 0 0 1 14.3 21H9.7a2 2 0 0 1-2-1.9L7 7h10Z"
-              />
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
+    </li>
   );
 }

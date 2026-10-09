@@ -4,15 +4,20 @@ import { use, useEffect, useState } from 'react';
 
 import { apiUrlClient, fetchClient, type DocumentFacturation } from '@/lib/api';
 import { formaterMontant, versCents } from '@/lib/argent';
-import { useListePaginee } from '@/lib/useListePaginee';
+import { clientAvatarStyle, initiales } from '@/lib/clientColors';
+import { usePageServeur } from '@/lib/usePageServeur';
 import { afficherToast } from '@/components/Toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { ICONES, Icone } from '@/components/Icone';
+import Pagination from '@/components/Pagination';
 
 import CatalogueManager from './CatalogueManager';
 import ComptesARecevoir from './ComptesARecevoir';
 import DocumentForm from './DocumentForm';
 import PaiementsPanel from './PaiementsPanel';
 import PlanSoumissionPanel from './PlanSoumissionPanel';
+
+const PAR_PAGE = 10;
 
 const statutLabel: Record<string, string> = {
   brouillon: 'Brouillon',
@@ -25,20 +30,20 @@ const statutLabel: Record<string, string> = {
 
 type Onglet = 'soumission' | 'facture' | 'a_recevoir' | 'catalogue';
 
-const ONGLETS: Record<Onglet, string> = {
-  soumission: 'Soumissions',
-  facture: 'Factures',
-  a_recevoir: 'Comptes à recevoir',
-  catalogue: 'Catalogue de prix',
+const ONGLETS: Record<Onglet, { label: string; icone: string }> = {
+  soumission: { label: 'Soumissions', icone: ICONES.document },
+  facture: { label: 'Factures', icone: ICONES.argent },
+  a_recevoir: { label: 'Comptes à recevoir', icone: ICONES.horloge },
+  catalogue: { label: 'Catalogue de prix', icone: ICONES.plus },
 };
 
 const statutStyle: Record<string, string> = {
-  brouillon: 'bg-black/5 text-black/50',
-  envoyee: 'bg-blue-100 text-blue-700',
-  acceptee: 'bg-green-100 text-green-700',
-  refusee: 'bg-red-100 text-red-700',
-  partielle: 'bg-amber-100 text-amber-700',
-  payee: 'bg-green-100 text-green-700',
+  brouillon: 'bg-black/[0.05] text-black/60 ring-black/10',
+  envoyee: 'bg-blue-50 text-blue-700 ring-blue-200',
+  acceptee: 'bg-green-50 text-green-700 ring-green-200',
+  refusee: 'bg-red-50 text-red-700 ring-red-200',
+  partielle: 'bg-amber-50 text-amber-800 ring-amber-200',
+  payee: 'bg-green-50 text-green-700 ring-green-200',
 };
 
 function dateCourte(iso: string) {
@@ -60,6 +65,36 @@ function estOnglet(valeur: string | undefined): valeur is Onglet {
   return valeur !== undefined && valeur in ONGLETS;
 }
 
+function Pastille({ className, children }: { className: string; children: React.ReactNode }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${className}`}>
+      {children}
+    </span>
+  );
+}
+
+function BoutonIcone({
+  titre, icone, onClick, href, danger, disabled,
+}: {
+  titre: string; icone: string; onClick?: () => void; href?: string; danger?: boolean; disabled?: boolean;
+}) {
+  const classes = `rounded-lg p-2 transition disabled:opacity-40 ${
+    danger ? 'text-black/35 hover:bg-red-50 hover:text-red-600' : 'text-black/45 hover:bg-black/[0.05] hover:text-navy'
+  }`;
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" title={titre} aria-label={titre} className={classes}>
+        <Icone d={icone} />
+      </a>
+    );
+  }
+  return (
+    <button onClick={onClick} disabled={disabled} title={titre} aria-label={titre} className={classes}>
+      <Icone d={icone} />
+    </button>
+  );
+}
+
 export default function FacturationDashboardPage({
   searchParams,
 }: {
@@ -68,18 +103,17 @@ export default function FacturationDashboardPage({
   // Liens directs depuis la vue d'ensemble : ?onglet=a_recevoir, ?facture=42 (ouvre ses paiements).
   const parametres = use(searchParams);
   const [onglet, setOnglet] = useState<Onglet>(estOnglet(parametres.onglet) ? parametres.onglet : 'soumission');
+  const [page, setPage] = useState(1);
   const typeListe = onglet === 'facture' ? 'facture' : 'soumission';
   const {
     items: documents,
     setItems: setDocuments,
     total,
-    chargementInitial,
-    chargementPage,
+    nbPages,
+    chargement,
     erreur: erreurChargement,
-    sentinelleRef,
     recharger,
-    chargerPlus,
-  } = useListePaginee<DocumentFacturation>(`/api/documents/?type_document=${typeListe}`);
+  } = usePageServeur<DocumentFacturation>(`/api/documents/?type_document=${typeListe}`, page, PAR_PAGE);
 
   const [enEdition, setEnEdition] = useState<DocumentFacturation | null | 'nouveau'>(null);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -93,6 +127,11 @@ export default function FacturationDashboardPage({
 
   function majDocument(maj: DocumentFacturation) {
     setDocuments((prev) => prev.map((d) => (d.id === maj.id ? maj : d)));
+  }
+
+  function changerOnglet(nouveau: Onglet) {
+    setOnglet(nouveau);
+    setPage(1);
   }
 
   const factureDemandee = Number(parametres.facture) || null;
@@ -167,8 +206,10 @@ export default function FacturationDashboardPage({
     try {
       await fetchClient(`/api/documents/${aSupprimer.id}/`, { method: 'DELETE' });
       afficherToast(`${aSupprimer.numero} supprimé.`);
-      setDocuments((prev) => prev.filter((d) => d.id !== aSupprimer.id));
       setASupprimer(null);
+      // Dernier document de la page : on revient à la page précédente plutôt qu'une page vide.
+      if (documents.length === 1 && page > 1) setPage(page - 1);
+      else recharger();
     } catch (e) {
       setErreur(e instanceof Error ? e.message : 'Erreur lors de la suppression.');
     } finally {
@@ -219,37 +260,52 @@ export default function FacturationDashboardPage({
     );
   }
 
+  const listeDocuments = onglet === 'soumission' || onglet === 'facture';
+
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-navy">Facturation</h1>
-        {(onglet === 'soumission' || onglet === 'facture') && (
+      {/* En-tête */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-navy">Facturation</h1>
+          <p className="mt-1 text-sm text-black/50">Soumissions, factures, paiements et comptes à recevoir.</p>
+        </div>
+        {listeDocuments && (
           <button
             onClick={() => setEnEdition('nouveau')}
-            className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+            className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-accent/30 transition hover:-translate-y-px hover:shadow-md hover:shadow-accent/30"
           >
-            + Nouveau
+            <Icone d={ICONES.plus} />
+            {onglet === 'soumission' ? 'Nouvelle soumission' : 'Nouvelle facture'}
           </button>
         )}
       </div>
 
-      {(erreur || erreurChargement) && <p className="mt-4 text-sm text-red-600">{erreur || erreurChargement}</p>}
-
-      <div className="mt-6 flex gap-1 border-b border-black/10">
-        {(Object.keys(ONGLETS) as Onglet[]).map((type) => (
-          <button
-            key={type}
-            onClick={() => setOnglet(type)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
-              onglet === type
-                ? 'border-accent text-navy'
-                : 'border-transparent text-black/40 hover:text-black/60'
-            }`}
-          >
-            {ONGLETS[type]}
-          </button>
-        ))}
+      {/* Onglets */}
+      <div className="mt-6 flex gap-1 overflow-x-auto rounded-xl border border-black/15 bg-black/[0.04] p-1">
+        {(Object.keys(ONGLETS) as Onglet[]).map((cle) => {
+          const actif = onglet === cle;
+          return (
+            <button
+              key={cle}
+              onClick={() => changerOnglet(cle)}
+              className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition ${
+                actif ? 'bg-white text-navy shadow-sm ring-1 ring-black/10' : 'text-black/70 hover:bg-white/70 hover:text-navy'
+              }`}
+            >
+              <Icone d={ONGLETS[cle].icone} className={`h-4 w-4 ${actif ? 'text-accent' : ''}`} />
+              {ONGLETS[cle].label}
+              {actif && listeDocuments && !chargement && (
+                <span className="rounded-full bg-navy px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white">{total}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
+
+      {(erreur || erreurChargement) && (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{erreur || erreurChargement}</p>
+      )}
 
       {onglet === 'catalogue' ? (
         <div className="mt-6">
@@ -260,175 +316,175 @@ export default function FacturationDashboardPage({
           <ComptesARecevoir onOuvrirFacture={ouvrirFacture} />
         </div>
       ) : (
-      <>
-      {!chargementInitial && total > 0 && (
-        <p className="mt-4 text-xs text-black/40">
-          {documents.length} sur {total} {onglet === 'soumission' ? 'soumissions' : 'factures'}
-        </p>
-      )}
+        <div className="mt-5 overflow-hidden rounded-2xl border border-black/15 bg-white shadow-sm">
+          {chargement && documents.length === 0 && (
+            <div className="divide-y divide-black/10">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-4 px-5 py-4">
+                  <div className="h-11 w-11 animate-pulse rounded-full bg-black/[0.06]" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 w-40 animate-pulse rounded bg-black/[0.06]" />
+                    <div className="h-3 w-64 animate-pulse rounded bg-black/[0.04]" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
-      <div className="mt-3 flex flex-col gap-3">
-        {chargementInitial && (
-          <div className="flex flex-col gap-3">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-[68px] animate-pulse rounded-xl bg-black/5" />
-            ))}
-          </div>
-        )}
+          {!chargement && documents.length === 0 && (
+            <div className="flex flex-col items-center px-6 py-14 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/[0.04] text-black/30">
+                <Icone d={onglet === 'soumission' ? ICONES.document : ICONES.argent} className="h-6 w-6" />
+              </div>
+              <p className="mt-3 font-semibold text-navy">
+                {onglet === 'soumission' ? 'Aucune soumission pour le moment' : 'Aucune facture pour le moment'}
+              </p>
+            </div>
+          )}
 
-        {!chargementInitial &&
-          documents.map((doc) => (
-            <div key={doc.id} className="flex items-center gap-4 rounded-xl border border-black/5 bg-white p-4 shadow-sm">
-              <div className="min-w-0 flex-1">
-                <p className="flex flex-wrap items-center gap-2 font-semibold text-navy">
-                  {doc.numero}
-                  {doc.type_document === 'soumission' && doc.echeances.length > 0 && (
-                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
-                      Plan en {doc.echeances.length} versement{doc.echeances.length > 1 ? 's' : ''}
-                    </span>
-                  )}
-                  {!doc.plan_valide && (
-                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
-                      Plan à corriger
-                    </span>
-                  )}
-                  {doc.type_paiement !== 'complet' && (
-                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
-                      {doc.type_paiement === 'acompte' ? 'Acompte' : 'Solde'}
-                      {doc.contrat_lie_numero ? ` · ${doc.contrat_lie_numero}` : ''}
-                    </span>
-                  )}
-                </p>
-                {doc.type_document === 'facture' ? (
-                  <p className="truncate text-sm text-black/50">
-                    {doc.client_nom} · {formaterMontant(doc.total)}
-                    {versCents(doc.montant_paye) > 0 && (
-                      <>
-                        {' · '}
-                        <span className="text-green-700">payé {formaterMontant(doc.montant_paye)}</span>
-                        {versCents(doc.solde_du) > 0 && (
+          <ul className={`divide-y divide-black/10 transition-opacity ${chargement ? 'opacity-50' : ''}`}>
+            {documents.map((doc) => {
+              const estFacture = doc.type_document === 'facture';
+              const suivi = !estFacture && doc.statut === 'envoyee' ? dernierSuivi(doc) : null;
+              return (
+                <li key={doc.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-black/[0.015] lg:flex-row lg:items-center">
+                  {/* Identité */}
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <div
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm"
+                      style={clientAvatarStyle(doc.client) || undefined}
+                      title={doc.client_nom}
+                    >
+                      {initiales(doc.client_nom || '?')}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="font-semibold tabular-nums text-navy">{doc.numero}</p>
+                        {doc.categorie === 'abonnement_saas' && (
+                          <span className="inline-flex items-center rounded-full bg-navy px-1.5 py-0.5 text-[10px] font-bold text-white">
+                            Extinc<span className="text-accent">Pro</span>
+                          </span>
+                        )}
+                        {!estFacture && doc.echeances.length > 0 && (
+                          <Pastille className="bg-indigo-50 text-indigo-700 ring-indigo-200">
+                            Plan en {doc.echeances.length} versement{doc.echeances.length > 1 ? 's' : ''}
+                          </Pastille>
+                        )}
+                        {!doc.plan_valide && <Pastille className="bg-red-50 text-red-700 ring-red-200">Plan à corriger</Pastille>}
+                        {doc.type_paiement !== 'complet' && (
+                          <Pastille className="bg-indigo-50 text-indigo-700 ring-indigo-200">
+                            {doc.type_paiement === 'acompte' ? 'Acompte' : 'Solde'}
+                            {doc.contrat_lie_numero ? ` · ${doc.contrat_lie_numero}` : ''}
+                          </Pastille>
+                        )}
+                      </div>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-black/55">
+                        <span className="truncate">{doc.client_nom}</span>
+                        <span className="text-black/25">·</span>
+                        <span className="font-semibold tabular-nums text-navy">{formaterMontant(doc.total)}</span>
+                        {estFacture && versCents(doc.montant_paye) > 0 && (
                           <>
-                            {' · '}
-                            <span className="font-semibold text-navy">solde {formaterMontant(doc.solde_du)}</span>
+                            <span className="text-black/25">·</span>
+                            <span className="text-green-700">payé {formaterMontant(doc.montant_paye)}</span>
+                            {versCents(doc.solde_du) > 0 && (
+                              <>
+                                <span className="text-black/25">·</span>
+                                <span className="font-semibold text-navy">solde {formaterMontant(doc.solde_du)}</span>
+                              </>
+                            )}
                           </>
                         )}
-                      </>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Statut */}
+                  <div className="flex flex-wrap items-center gap-1.5 pl-[60px] lg:w-52 lg:flex-col lg:items-end lg:gap-1 lg:pl-0">
+                    <Pastille className={statutStyle[doc.statut]}>{statutLabel[doc.statut]}</Pastille>
+                    {doc.jours_retard > 0 && (
+                      <Pastille className="bg-red-50 text-red-700 ring-red-200">En retard · {doc.jours_retard} j</Pastille>
                     )}
-                  </p>
-                ) : (
-                  <p className="truncate text-sm text-black/50">{doc.client_nom} · {doc.total} $</p>
-                )}
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-0.5">
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statutStyle[doc.statut]}`}>
-                  {statutLabel[doc.statut]}
-                </span>
-                {doc.jours_retard > 0 && (
-                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
-                    En retard · {doc.jours_retard} j
-                  </span>
-                )}
-                {doc.type_document === 'soumission' && doc.statut === 'envoyee' && dernierSuivi(doc) && (
-                  <span className="text-[11px] text-black/40" suppressHydrationWarning>
-                    {dernierSuivi(doc)}
-                  </span>
-                )}
-                {(doc.statut === 'acceptee' || doc.statut === 'payee') && doc.date_reponse && (
-                  <span className="text-[11px] text-black/40" suppressHydrationWarning>
-                    Signée le {new Date(doc.date_reponse).toLocaleDateString('fr-CA')}
-                  </span>
-                )}
-              </div>
-              {doc.type_document === 'facture' && (
-                <button
-                  onClick={() => setEnPaiement(doc)}
-                  className="shrink-0 rounded-full bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
-                >
-                  Paiements
-                </button>
-              )}
-              {doc.type_document === 'soumission' && (
-                <button
-                  onClick={() => setEnPlanSoumission(doc)}
-                  className="shrink-0 rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
-                >
-                  Plan de paiement
-                </button>
-              )}
-              {doc.type_document === 'soumission' && (doc.statut === 'acceptee' || doc.statut === 'payee') && (
-                <label className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-black/50">
-                  <input
-                    type="checkbox"
-                    checked={doc.statut === 'payee'}
-                    disabled={majEnCours === doc.id}
-                    onChange={() => togglePayee(doc)}
-                    className="h-4 w-4 accent-accent"
-                  />
-                  Reçue
-                </label>
-              )}
-              {doc.solde_facturable && (
-                <button
-                  onClick={() => facturerSolde(doc)}
-                  disabled={facturationEnCours === doc.id}
-                  className="shrink-0 rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {facturationEnCours === doc.id ? 'Facturation…' : 'Facturer le solde'}
-                </button>
-              )}
-              <a
-                href={apiUrlClient(`/api/documents/${doc.id}/pdf/`)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 text-sm font-semibold text-navy hover:underline"
-              >
-                Voir le PDF
-              </a>
-              <button
-                onClick={() => envoyer(doc)}
-                disabled={envoiEnCours === doc.id}
-                className="shrink-0 text-sm font-semibold text-accent hover:underline disabled:opacity-50"
-              >
-                {envoiEnCours === doc.id ? 'Envoi…' : doc.statut === 'brouillon' ? 'Envoyer au client' : 'Renvoyer au client'}
-              </button>
-              <button
-                onClick={() => setEnEdition(doc)}
-                className="shrink-0 text-sm font-semibold text-black/60 hover:underline"
-              >
-                Modifier
-              </button>
-              <button
-                onClick={() => setASupprimer(doc)}
-                className="shrink-0 text-sm font-semibold text-black/40 hover:text-red-600"
-              >
-                Supprimer
-              </button>
-            </div>
-          ))}
+                    {suivi && (
+                      <span className="text-[11px] text-black/45" suppressHydrationWarning>{suivi}</span>
+                    )}
+                    {(doc.statut === 'acceptee' || doc.statut === 'payee') && doc.date_reponse && (
+                      <span className="text-[11px] text-black/45" suppressHydrationWarning>
+                        Signée le {new Date(doc.date_reponse).toLocaleDateString('fr-CA')}
+                      </span>
+                    )}
+                  </div>
 
-        {!chargementInitial && documents.length === 0 && (
-          <p className="text-black/50">
-            {onglet === 'soumission' ? 'Aucune soumission pour le moment.' : 'Aucune facture pour le moment.'}
-          </p>
-        )}
+                  {/* Actions */}
+                  <div className="flex flex-wrap items-center gap-1 pl-[60px] lg:pl-0">
+                    {estFacture ? (
+                      <button
+                        onClick={() => setEnPaiement(doc)}
+                        className="flex items-center gap-1.5 rounded-lg border border-green-200 bg-white px-3 py-1.5 text-[13px] font-semibold text-green-700 transition hover:border-green-600 hover:bg-green-600 hover:text-white"
+                      >
+                        <Icone d={ICONES.argent} className="h-3.5 w-3.5" />
+                        Paiements
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setEnPlanSoumission(doc)}
+                        className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-[13px] font-semibold text-indigo-700 transition hover:border-indigo-600 hover:bg-indigo-600 hover:text-white"
+                      >
+                        <Icone d={ICONES.calendrier} className="h-3.5 w-3.5" />
+                        Plan
+                      </button>
+                    )}
+                    {doc.solde_facturable && (
+                      <button
+                        onClick={() => facturerSolde(doc)}
+                        disabled={facturationEnCours === doc.id}
+                        className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-[13px] font-semibold text-indigo-700 transition hover:bg-indigo-600 hover:text-white disabled:opacity-50"
+                      >
+                        {facturationEnCours === doc.id ? 'Facturation…' : 'Facturer le solde'}
+                      </button>
+                    )}
+                    {!estFacture && (doc.statut === 'acceptee' || doc.statut === 'payee') && (
+                      <label
+                        className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] font-semibold transition ${
+                          doc.statut === 'payee'
+                            ? 'border-green-200 bg-green-50 text-green-700'
+                            : 'border-black/15 bg-white text-black/55 hover:border-navy/40'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={doc.statut === 'payee'}
+                          disabled={majEnCours === doc.id}
+                          onChange={() => togglePayee(doc)}
+                          className="h-3.5 w-3.5 accent-green-600"
+                        />
+                        Reçue
+                      </label>
+                    )}
+                    <span className="mx-1 hidden h-5 w-px bg-black/10 sm:block" />
+                    <BoutonIcone titre="Voir le PDF" icone={ICONES.telecharger} href={apiUrlClient(`/api/documents/${doc.id}/pdf/`)} />
+                    <BoutonIcone
+                      titre={envoiEnCours === doc.id ? 'Envoi…' : doc.statut === 'brouillon' ? 'Envoyer au client' : 'Renvoyer au client'}
+                      icone={ICONES.envoyer}
+                      onClick={() => envoyer(doc)}
+                      disabled={envoiEnCours === doc.id}
+                    />
+                    <BoutonIcone titre="Modifier" icone={ICONES.modifier} onClick={() => setEnEdition(doc)} />
+                    <BoutonIcone titre="Supprimer" icone={ICONES.supprimer} onClick={() => setASupprimer(doc)} danger />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
 
-        <div ref={sentinelleRef} />
-        {chargementPage && (
-          <div className="flex justify-center py-2">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          </div>
-        )}
-        {!chargementPage && !chargementInitial && documents.length < total && (
-          <button
-            onClick={chargerPlus}
-            className="mx-auto mt-1 rounded-full border border-black/10 px-5 py-2 text-sm font-semibold text-navy hover:bg-black/5"
-          >
-            Charger plus
-          </button>
-        )}
-      </div>
-
-      </>
+          <Pagination
+            page={page}
+            nbPages={nbPages}
+            total={total}
+            parPage={PAR_PAGE}
+            libelle={onglet === 'soumission' ? ['soumission', 'soumissions'] : ['facture', 'factures']}
+            onChange={setPage}
+          />
+        </div>
       )}
 
       {aSupprimer && (

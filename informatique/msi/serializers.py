@@ -37,8 +37,12 @@ class ClientSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'nom_entreprise', 'nom_contact', 'courriel', 'telephone',
             'adresse', 'date_creation',
+            'extincpro_organisation_id', 'extincpro_resilie_le', 'est_client_extincpro',
         ]
-        read_only_fields = ['id', 'date_creation']
+        # Le lien ExtincPro ne se modifie que par la liaison (msi/extincpro.py).
+        read_only_fields = [
+            'id', 'date_creation', 'extincpro_organisation_id', 'extincpro_resilie_le', 'est_client_extincpro',
+        ]
 
 
 class LigneDocumentSerializer(serializers.ModelSerializer):
@@ -46,7 +50,7 @@ class LigneDocumentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = LigneDocument
-        fields = ['id', 'description', 'quantite', 'prix_unitaire', 'montant']
+        fields = ['id', 'description', 'quantite', 'prix_unitaire', 'montant', 'module_extincpro']
 
 
 EXTENSIONS_PREUVE = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.gif', '.pdf'}
@@ -385,7 +389,7 @@ class ParametresRappelsSerializer(serializers.ModelSerializer):
 class ArticleCatalogueSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArticleCatalogue
-        fields = ['id', 'nom', 'description', 'prix', 'frequence', 'actif', 'ordre']
+        fields = ['id', 'nom', 'description', 'prix', 'frequence', 'module_extincpro', 'actif', 'ordre']
 
 
 class CompteGrandLivreSerializer(serializers.ModelSerializer):

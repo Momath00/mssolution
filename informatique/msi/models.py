@@ -66,6 +66,12 @@ class Client(models.Model):
     courriel = models.EmailField()
     telephone = models.CharField(max_length=20, blank=True)
     adresse = models.TextField(blank=True)
+    # Ligne d'affaires ExtincPro : renseigné quand ce client est une organisation abonnée
+    # au logiciel ExtincPro. La création part toujours d'ExtincPro (liste « À lier ») —
+    # un client créé ici n'est jamais envoyé vers ExtincPro.
+    extincpro_organisation_id = models.PositiveIntegerField(null=True, blank=True, unique=True)
+    # L'organisation a été supprimée dans ExtincPro : le client et ses factures restent.
+    extincpro_resilie_le = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
@@ -74,6 +80,10 @@ class Client(models.Model):
 
     def __str__(self):
         return self.nom_entreprise
+
+    @property
+    def est_client_extincpro(self):
+        return self.extincpro_organisation_id is not None
 
 
 class Document(models.Model):
@@ -334,6 +344,9 @@ class LigneDocument(models.Model):
     description = models.CharField(max_length=300)
     quantite = models.DecimalField(max_digits=10, decimal_places=2, default=1)
     prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
+    # Code du module ExtincPro que cette ligne facture (copié de l'article du catalogue) —
+    # activé dans ExtincPro au premier paiement d'un abonnement.
+    module_extincpro = models.CharField(max_length=50, blank=True)
 
     @property
     def montant(self):
@@ -359,6 +372,10 @@ class ArticleCatalogue(models.Model):
     description = models.TextField(blank=True)
     prix = models.DecimalField(max_digits=10, decimal_places=2)
     frequence = models.CharField(max_length=10, choices=FREQUENCE_CHOICES, default='unique')
+    module_extincpro = models.CharField(
+        max_length=50, blank=True,
+        help_text="Code du module ExtincPro vendu par cet article (ex. gicleur) — vide pour un service ordinaire.",
+    )
     actif = models.BooleanField(default=True)
     ordre = models.PositiveIntegerField(default=0)
 
@@ -596,3 +613,23 @@ class RapportComptableArchive(models.Model):
 
     def __str__(self):
         return f'T{self.trimestre} {self.annee}'
+
+
+class ActionExtincPro(models.Model):
+    """Trace de chaque ordre envoyé à ExtincPro (blocage, modules, essai, liaison),
+    réussi ou non — preuve en cas de litige avec un client."""
+
+    client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True, blank=True, related_name='actions_extincpro')
+    organisation_id = models.PositiveIntegerField()
+    action = models.CharField(max_length=30)
+    details = models.JSONField(default=dict, blank=True)
+    succes = models.BooleanField(default=True)
+    erreur = models.CharField(max_length=500, blank=True)
+    utilisateur = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f'{self.action} — organisation {self.organisation_id} ({"ok" if self.succes else "échec"})'

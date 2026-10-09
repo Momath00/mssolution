@@ -23,7 +23,7 @@ interface Props {
 }
 
 function ligneVide(): LigneDocument {
-  return { description: '', quantite: '1', prix_unitaire: '0' };
+  return { description: '', quantite: '1', prix_unitaire: '0', module_extincpro: '' };
 }
 
 export default function DocumentForm({ document, typeParDefaut, onDone, onCancel }: Props) {
@@ -64,7 +64,8 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
     if (!article) return;
     const suffixe = article.frequence === 'annuel' ? ' (par année)' : '';
     const description = `${article.nom}${article.description ? ` — ${article.description}` : ''}${suffixe}`.slice(0, 300);
-    const ligne = { description, quantite: '1', prix_unitaire: article.prix };
+    // Le code du module ExtincPro suit la ligne : il sera activé au premier paiement.
+    const ligne = { description, quantite: '1', prix_unitaire: article.prix, module_extincpro: article.module_extincpro || '' };
     // Remplace la ligne vide de départ plutôt que d'en laisser une à retirer à la main.
     setLignes((prev) =>
       prev.length === 1 && !prev[0].description && !Number(prev[0].prix_unitaire) ? [ligne] : [...prev, ligne],
@@ -97,6 +98,7 @@ export default function DocumentForm({ document, typeParDefaut, onDone, onCancel
         description: l.description,
         quantite: l.quantite || '0',
         prix_unitaire: l.prix_unitaire || '0',
+        module_extincpro: l.module_extincpro || '',
       })),
     };
 
