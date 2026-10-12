@@ -19,7 +19,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
     url: siteUrl,
     logo: `${siteUrl}/logo-icon-trimmed.png`,
     image: coordonnees?.logo ? mediaUrl(coordonnees.logo) || undefined : `${siteUrl}/logo-icon-trimmed.png`,
-    description: "Conception et développement de plateformes web sur mesure pour les entreprises.",
+    description: "Applications web, logiciels sur mesure et automatisation des processus pour les entreprises.",
     ...(coordonnees?.courriel ? { email: coordonnees.courriel } : {}),
     ...(coordonnees?.telephone ? { telephone: coordonnees.telephone } : {}),
     ...(coordonnees?.adresse ? { address: coordonnees.adresse } : {}),

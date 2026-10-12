@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'MS Solution Informatique',
     short_name: 'MS Solution',
-    description: 'Plateformes web sur mesure pour les entreprises.',
+    description: 'Applications web, logiciels sur mesure et automatisation.',
     start_url: '/login',
     display: 'standalone',
     background_color: '#1a1440',

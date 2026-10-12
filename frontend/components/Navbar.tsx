@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const liens = [
   { href: '/', label: 'Accueil' },
@@ -16,10 +16,16 @@ export default function Navbar() {
   const [ouvert, setOuvert] = useState(false);
   const [defile, setDefile] = useState(false);
   const pathname = usePathname();
+  const progression = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     function onScroll() {
       setDefile(window.scrollY > 12);
+      // Barre de lecture : écrite directement dans le style pour ne pas re-rendre à chaque défilement.
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      if (progression.current) {
+        progression.current.style.transform = `scaleX(${max > 0 ? Math.min(window.scrollY / max, 1) : 0})`;
+      }
     }
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -28,8 +34,10 @@ export default function Navbar() {
 
   return (
     <header
-      className={`bg-navy sticky top-0 z-50 transition-shadow duration-300 ${
-        defile ? 'shadow-lg shadow-black/20' : 'shadow-none'
+      className={`sticky top-0 z-50 border-b transition-all duration-300 ${
+        defile || ouvert
+          ? 'border-white/10 bg-navy/95 shadow-lg shadow-black/20 backdrop-blur-xl'
+          : 'border-transparent bg-navy'
       }`}
     >
       <div
@@ -44,7 +52,7 @@ export default function Navbar() {
             width={40}
             height={40}
             priority
-            className="transition-all duration-300"
+            className="transition-transform duration-500 hover:rotate-[-8deg] hover:scale-105"
           />
           <span className="flex flex-col leading-none">
             <span className="text-xl font-bold tracking-tight text-white">Solution</span>
@@ -67,7 +75,7 @@ export default function Navbar() {
               >
                 {lien.label}
                 <span
-                  className={`absolute -bottom-0.5 left-0 h-px bg-white transition-all duration-300 ${
+                  className={`absolute -bottom-0.5 left-0 h-0.5 rounded-full bg-accent transition-all duration-300 ${
                     actif ? 'w-full' : 'w-0 group-hover:w-full'
                   }`}
                 />
@@ -77,25 +85,43 @@ export default function Navbar() {
         </nav>
         <Link
           href="/soumission"
-          className="hidden rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 md:block"
+          className="btn-reflet hidden rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white shadow-md shadow-accent/30 transition-transform hover:-translate-y-0.5 md:block"
         >
           Demander une soumission
         </Link>
 
         <button
           type="button"
-          aria-label="Ouvrir le menu"
+          aria-label={ouvert ? 'Fermer le menu' : 'Ouvrir le menu'}
+          aria-expanded={ouvert}
           onClick={() => setOuvert((v) => !v)}
-          className="flex flex-col gap-1.5 md:hidden"
+          className="relative h-6 w-6 md:hidden"
         >
-          <span className="h-0.5 w-6 bg-white" />
-          <span className="h-0.5 w-6 bg-white" />
-          <span className="h-0.5 w-6 bg-white" />
+          <span
+            className={`absolute left-0 top-1 h-0.5 w-6 rounded bg-white transition-transform duration-300 ${
+              ouvert ? 'translate-y-[7px] rotate-45' : ''
+            }`}
+          />
+          <span
+            className={`absolute left-0 top-[11px] h-0.5 w-6 rounded bg-white transition-opacity duration-200 ${
+              ouvert ? 'opacity-0' : ''
+            }`}
+          />
+          <span
+            className={`absolute left-0 top-[18px] h-0.5 w-6 rounded bg-white transition-transform duration-300 ${
+              ouvert ? '-translate-y-[7px] -rotate-45' : ''
+            }`}
+          />
         </button>
       </div>
 
-      {ouvert && (
-        <nav className="flex flex-col gap-1 border-t border-white/10 px-6 pb-4 md:hidden">
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-out md:hidden ${
+          ouvert ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        }`}
+      >
+        <nav className="flex flex-col gap-1 overflow-hidden px-6" inert={!ouvert}>
+          <span className="h-2" />
           {liens.map((lien) => (
             <Link
               key={lien.href}
@@ -113,8 +139,15 @@ export default function Navbar() {
           >
             Demander une soumission
           </Link>
+          <span className="h-4" />
         </nav>
-      )}
+      </div>
+      <span
+        ref={progression}
+        aria-hidden
+        style={{ transform: 'scaleX(0)' }}
+        className="absolute bottom-0 left-0 h-0.5 w-full origin-left bg-linear-to-r from-accent via-[#ff6b77] to-violet-400"
+      />
     </header>
   );
 }

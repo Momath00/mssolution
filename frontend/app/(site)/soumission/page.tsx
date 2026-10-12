@@ -1,4 +1,5 @@
 import SoumissionForm from '@/components/SoumissionForm';
+import PageHero from '@/components/site/PageHero';
 
 export const metadata = {
   title: 'Demander une soumission',
@@ -8,14 +9,17 @@ export const metadata = {
 
 export default function SoumissionPage() {
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-bold text-navy">Demander une soumission</h1>
-      <p className="mt-2 text-black/60">
-        Décrivez votre projet et votre entreprise, notre équipe vous revient rapidement avec une soumission.
-      </p>
-      <div className="mt-10">
-        <SoumissionForm />
+    <>
+      <PageHero
+        surtitre="Soumission"
+        titre="Demander une soumission"
+        description="Décrivez votre projet et votre entreprise, notre équipe vous revient rapidement avec une soumission."
+      />
+      <div className="relative mx-auto -mt-10 mb-20 w-full max-w-2xl px-6">
+        <div className="animate-entree rounded-2xl border border-black/5 bg-white p-6 shadow-xl shadow-navy/10 sm:p-10" style={{ '--d': '300ms' } as React.CSSProperties}>
+          <SoumissionForm />
+        </div>
       </div>
-    </div>
+    </>
   );
 }

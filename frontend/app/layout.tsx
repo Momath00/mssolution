@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 const siteUrl = "https://mssolutioninformatique.com";
 const siteName = "MS Solution Informatique";
-const siteDescription = "Plateformes web sur mesure pour les entreprises : sites vitrines, portails clients et outils de gestion conçus et maintenus par MS Solution Informatique.";
+const siteDescription = "Applications web, logiciels sur mesure et automatisation : MS Solution Informatique transforme les processus des entreprises en outils numériques modernes.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
