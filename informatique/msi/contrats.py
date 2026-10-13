@@ -210,6 +210,59 @@ def creer_facture_solde(contrat):
     return facture
 
 
+@transaction.atomic
+def convertir_en_facture(soumission, utilisateur=None):
+    """
+    Soumission acceptée hors ligne (au téléphone, en personne) : crée la facture que le
+    client demande pour payer, en brouillon pour pouvoir la vérifier avant de l'envoyer.
+    Reprend les lignes et le plan de paiement (décalé au jour de la conversion, comme à une
+    signature en ligne), et marque la soumission acceptée. Aucun contrat n'est créé : il n'y
+    a ni signature ni IP à figer — c'est le lien soumission_origine qui relie les deux.
+    """
+    soumission = Document.objects.select_for_update().get(pk=soumission.pk)
+    if soumission.type_document != 'soumission':
+        raise ValidationError('Seule une soumission peut être convertie en facture.')
+    if hasattr(soumission, 'contrat'):
+        raise ValidationError(
+            'Cette soumission a été signée en ligne : ses factures ont déjà été créées avec le contrat.',
+        )
+    if soumission.factures_converties.exists():
+        raise ValidationError('Cette soumission a déjà été convertie en facture.')
+    if soumission.statut == 'payee':
+        raise ValidationError(
+            'Cette soumission est déjà marquée « reçue » : décochez-la avant de la convertir en facture.',
+        )
+    if not soumission.lignes.exists():
+        raise ValidationError('Cette soumission n’a aucune ligne à facturer.')
+
+    aujourd_hui = timezone.localdate()
+    versements = plan_decale(soumission, aujourd_hui) if plan_valide(soumission) else []
+
+    facture = Document.objects.create(
+        numero=Document.generer_numero('facture'),
+        type_document='facture',
+        type_paiement='complet',
+        soumission_origine=soumission,
+        categorie=soumission.categorie,
+        client_id=soumission.client_id,
+        statut='brouillon',
+        created_by=utilisateur or soumission.created_by,
+    )
+    for ligne in soumission.lignes.all():
+        LigneDocument.objects.create(
+            document=facture, description=ligne.description,
+            quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
+            module_extincpro=ligne.module_extincpro,
+        )
+    if versements:
+        definir_echeancier(facture, versements)
+
+    soumission.statut = 'acceptee'
+    soumission.date_reponse = timezone.now()
+    soumission.save(update_fields=['statut', 'date_reponse'])
+    return facture
+
+
 def _creer_evenement_contrat(document, contrat):
     """
     Déverse le contenu de la soumission acceptée dans le planificateur, pour qu'il

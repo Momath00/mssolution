@@ -13,6 +13,7 @@ import Pagination from '@/components/Pagination';
 
 import CatalogueManager from './CatalogueManager';
 import ComptesARecevoir from './ComptesARecevoir';
+import ConvertirFactureDialog from './ConvertirFactureDialog';
 import DocumentForm from './DocumentForm';
 import PaiementsPanel from './PaiementsPanel';
 import PlanSoumissionPanel from './PlanSoumissionPanel';
@@ -124,6 +125,8 @@ export default function FacturationDashboardPage({
   const [facturationEnCours, setFacturationEnCours] = useState<number | null>(null);
   const [enPaiement, setEnPaiement] = useState<DocumentFacturation | null>(null);
   const [enPlanSoumission, setEnPlanSoumission] = useState<DocumentFacturation | null>(null);
+  const [aConvertir, setAConvertir] = useState<DocumentFacturation | null>(null);
+  const [conversionEnCours, setConversionEnCours] = useState(false);
 
   function majDocument(maj: DocumentFacturation) {
     setDocuments((prev) => prev.map((d) => (d.id === maj.id ? maj : d)));
@@ -161,6 +164,25 @@ export default function FacturationDashboardPage({
       setErreur(e instanceof Error ? e.message : 'Erreur lors de la facturation du solde.');
     } finally {
       setFacturationEnCours(null);
+    }
+  }
+
+  async function confirmerConversion() {
+    if (!aConvertir) return;
+    setConversionEnCours(true);
+    try {
+      const facture = await fetchClient<DocumentFacturation>(
+        `/api/documents/${aConvertir.id}/convertir-en-facture/`, { method: 'POST' },
+      );
+      afficherToast(`Facture ${facture.numero} créée en brouillon — vérifie-la, puis envoie-la au client.`);
+      setAConvertir(null);
+      changerOnglet('facture');
+      setEnEdition(facture);
+    } catch (e) {
+      setAConvertir(null);
+      setErreur(e instanceof Error ? e.message : 'Erreur lors de la conversion en facture.');
+    } finally {
+      setConversionEnCours(false);
     }
   }
 
@@ -370,6 +392,16 @@ export default function FacturationDashboardPage({
                             Plan en {doc.echeances.length} versement{doc.echeances.length > 1 ? 's' : ''}
                           </Pastille>
                         )}
+                        {doc.soumission_origine_numero && (
+                          <Pastille className="bg-indigo-50 text-indigo-700 ring-indigo-200">
+                            De {doc.soumission_origine_numero}
+                          </Pastille>
+                        )}
+                        {doc.facture_convertie && (
+                          <Pastille className="bg-green-50 text-green-700 ring-green-200">
+                            Facturée · {doc.facture_convertie.numero}
+                          </Pastille>
+                        )}
                         {!doc.plan_valide && <Pastille className="bg-red-50 text-red-700 ring-red-200">Plan à corriger</Pastille>}
                         {doc.type_paiement !== 'complet' && (
                           <Pastille className="bg-indigo-50 text-indigo-700 ring-indigo-200">
@@ -442,7 +474,25 @@ export default function FacturationDashboardPage({
                         {facturationEnCours === doc.id ? 'Facturation…' : 'Facturer le solde'}
                       </button>
                     )}
-                    {!estFacture && (doc.statut === 'acceptee' || doc.statut === 'payee') && (
+                    {!estFacture && !doc.contrat_id && !doc.facture_convertie && doc.statut !== 'payee' && (
+                      <button
+                        onClick={() => setAConvertir(doc)}
+                        title="Le client a accepté au téléphone : créer la facture qu’il paiera"
+                        className="flex items-center gap-1.5 rounded-lg border border-green-200 bg-white px-3 py-1.5 text-[13px] font-semibold text-green-700 transition hover:border-green-600 hover:bg-green-600 hover:text-white"
+                      >
+                        <Icone d={ICONES.argent} className="h-3.5 w-3.5" />
+                        Convertir en facture
+                      </button>
+                    )}
+                    {doc.facture_convertie && (
+                      <button
+                        onClick={() => ouvrirFacture(doc.facture_convertie!.id)}
+                        className="rounded-lg border border-black/15 bg-white px-3 py-1.5 text-[13px] font-semibold text-black/60 transition hover:border-navy/40"
+                      >
+                        Voir la facture
+                      </button>
+                    )}
+                    {!estFacture && !doc.facture_convertie && (doc.statut === 'acceptee' || doc.statut === 'payee') && (
                       <label
                         className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] font-semibold transition ${
                           doc.statut === 'payee'
@@ -494,6 +544,15 @@ export default function FacturationDashboardPage({
           enCours={suppressionEnCours}
           onConfirm={confirmerSuppression}
           onCancel={() => setASupprimer(null)}
+        />
+      )}
+
+      {aConvertir && (
+        <ConvertirFactureDialog
+          soumission={aConvertir}
+          enCours={conversionEnCours}
+          onConfirm={confirmerConversion}
+          onCancel={() => setAConvertir(null)}
         />
       )}
     </div>

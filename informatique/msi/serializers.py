@@ -121,6 +121,10 @@ class DocumentSerializer(serializers.ModelSerializer):
     total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     contrat_lie_numero = serializers.CharField(source='contrat_lie.numero', read_only=True, default=None)
     contrat_id = serializers.SerializerMethodField()
+    soumission_origine_numero = serializers.CharField(
+        source='soumission_origine.numero', read_only=True, default=None,
+    )
+    facture_convertie = serializers.SerializerMethodField()
     solde_facturable = serializers.SerializerMethodField()
     montant_paye = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     solde_du = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
@@ -138,7 +142,8 @@ class DocumentSerializer(serializers.ModelSerializer):
             'date_creation', 'date_echeance', 'date_reponse', 'lignes',
             'sous_total', 'montant_tps', 'montant_tvq', 'total',
             'pourcentage_acompte', 'type_paiement', 'contrat_lie', 'contrat_lie_numero',
-            'contrat_id', 'solde_facturable',
+            'contrat_id', 'solde_facturable', 'soumission_origine', 'soumission_origine_numero',
+            'facture_convertie',
             'montant_paye', 'solde_du', 'montant_en_retard', 'jours_retard', 'prochaine_echeance',
             'echeances', 'paiements', 'date_derniere_relance', 'plan_valide',
             'date_envoi', 'date_rappel_avant_echeance', 'date_relance_soumission',
@@ -146,6 +151,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'numero', 'date_creation', 'date_reponse', 'type_paiement', 'contrat_lie',
+            'soumission_origine',
             'date_derniere_relance', 'date_envoi', 'date_rappel_avant_echeance',
             'date_relance_soumission', 'date_rappel_expiration', 'date_alerte_expiration',
         ]
@@ -207,6 +213,11 @@ class DocumentSerializer(serializers.ModelSerializer):
     def get_contrat_id(self, document):
         contrat = getattr(document, 'contrat', None)
         return contrat.id if contrat else None
+
+    def get_facture_convertie(self, document):
+        """Sur une soumission convertie à la main : la facture créée ({id, numero}), sinon None."""
+        facture = next(iter(document.factures_converties.all()), None)
+        return {'id': facture.id, 'numero': facture.numero} if facture else None
 
     def get_solde_facturable(self, document):
         """Vrai sur une soumission acceptée avec acompte déjà facturé mais pas encore de solde

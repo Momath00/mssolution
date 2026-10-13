@@ -17,7 +17,7 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from . import extincpro
-from .contrats import creer_contrat, creer_facture_solde
+from .contrats import convertir_en_facture, creer_contrat, creer_facture_solde
 from .emails import (
     envoyer_confirmation_paiement,
     envoyer_contact,
@@ -139,8 +139,10 @@ class DocumentViewSet(viewsets.ModelViewSet):
     pagination_class = PaginationStandard
 
     def get_queryset(self):
-        queryset = Document.objects.select_related('client', 'contrat_lie', 'contrat').prefetch_related(
-            'lignes', 'contrat__factures_liees', 'paiements', 'echeances',
+        queryset = Document.objects.select_related(
+            'client', 'contrat_lie', 'contrat', 'soumission_origine',
+        ).prefetch_related(
+            'lignes', 'contrat__factures_liees', 'paiements', 'echeances', 'factures_converties',
         )
         type_document = self.request.query_params.get('type_document')
         if type_document:
@@ -161,6 +163,11 @@ class DocumentViewSet(viewsets.ModelViewSet):
         try:
             instance.delete()
         except ProtectedError:
+            if instance.factures_converties.exists():
+                raise ValidationError(
+                    'Impossible de supprimer cette soumission : elle a été convertie en facture. '
+                    'Supprimez d’abord la facture, ou conservez la soumission comme archive.',
+                )
             raise ValidationError(
                 'Impossible de supprimer cette soumission : elle a déjà un contrat signé. '
                 'Annulez le contrat si nécessaire, ou conservez la soumission comme archive.',
@@ -284,6 +291,12 @@ class DocumentViewSet(viewsets.ModelViewSet):
         document = self.get_object()
         envoyer_rappel(document)
         return Response(self.get_serializer(self._document_a_jour(document.pk)).data)
+
+    @action(detail=True, methods=['post'], url_path='convertir-en-facture')
+    def convertir_en_facture(self, request, pk=None):
+        """Soumission acceptée au téléphone : crée la facture (en brouillon) que le client paiera."""
+        facture = convertir_en_facture(self.get_object(), request.user)
+        return Response(self.get_serializer(self._document_a_jour(facture.pk)).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'])
     def pdf(self, request, pk=None):
@@ -553,7 +566,9 @@ def _encaisse(debut, fin, categorie=None):
     soumissions = Document.objects.filter(
         type_document='soumission', statut='payee',
         date_creation__date__gte=debut, date_creation__date__lt=fin,
-    ).exclude(contrat__factures_liees__isnull=False).prefetch_related('lignes')
+    ).exclude(contrat__factures_liees__isnull=False).exclude(
+        factures_converties__isnull=False,
+    ).prefetch_related('lignes')
     if categorie:
         paiements = paiements.filter(document__categorie=categorie)
         soumissions = soumissions.filter(categorie=categorie)

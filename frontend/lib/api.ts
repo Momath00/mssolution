@@ -136,6 +136,9 @@ export interface DocumentFacturation {
   contrat_lie_numero: string | null;
   contrat_id: number | null;
   solde_facturable: boolean;
+  soumission_origine: number | null;
+  soumission_origine_numero: string | null;
+  facture_convertie: { id: number; numero: string } | null;
   montant_paye: string;
   solde_du: string;
   montant_en_retard: string;

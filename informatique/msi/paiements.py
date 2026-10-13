@@ -44,7 +44,7 @@ def ventes_emises(debut, fin):
     soumissions_payees = Document.objects.filter(
         type_document='soumission', statut='payee',
         date_creation__date__gte=debut, date_creation__date__lt=fin,
-    ).exclude(contrat__factures_liees__isnull=False)
+    ).exclude(contrat__factures_liees__isnull=False).exclude(factures_converties__isnull=False)
     return (
         (factures_emises | soumissions_payees)
         .distinct()
