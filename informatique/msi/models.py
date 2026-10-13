@@ -129,6 +129,12 @@ class Document(models.Model):
     contrat_lie = models.ForeignKey(
         'Contrat', on_delete=models.SET_NULL, null=True, blank=True, related_name='factures_liees',
     )
+    # Sur une facture : soumission acceptée hors ligne (au téléphone, en personne) puis
+    # convertie à la main — sans contrat signé, c'est ce lien qui relie les deux.
+    soumission_origine = models.ForeignKey(
+        'self', on_delete=models.PROTECT, null=True, blank=True, related_name='factures_converties',
+        limit_choices_to={'type_document': 'soumission'},
+    )
     # Suivi des courriels automatiques (voir rappels.py et la commande envoyer_rappels) —
     # chaque date empêche d'envoyer deux fois le même rappel.
     date_envoi = models.DateTimeField(null=True, blank=True)  # dernier envoi au client

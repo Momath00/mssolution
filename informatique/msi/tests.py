@@ -283,6 +283,83 @@ class ComptesARecevoirTests(BaseFacture):
         self.assertEqual(self.api.post(f'/api/documents/{brouillon.id}/rappel/').status_code, 400)
 
 
+class ConversionSoumissionTests(BaseFacture):
+    """Soumission acceptée au téléphone → facture créée à la main depuis le dashboard."""
+
+    def setUp(self):
+        super().setUp()
+        self.soumission = Document.objects.create(
+            numero=Document.generer_numero('soumission'), type_document='soumission',
+            client=self.client_entreprise, statut='envoyee', categorie='developpement',
+        )
+        LigneDocument.objects.create(document=self.soumission, description='Site web', quantite=2, prix_unitaire=Decimal('500'))
+        LigneDocument.objects.create(document=self.soumission, description='Hébergement', quantite=1, prix_unitaire=Decimal('120'))
+
+    def convertir(self, document=None):
+        document = document or self.soumission
+        return self.api.post(f'/api/documents/{document.id}/convertir-en-facture/')
+
+    def test_conversion_copie_les_lignes_et_accepte_la_soumission(self):
+        reponse = self.convertir()
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        donnees = reponse.json()
+        self.assertEqual(donnees['type_document'], 'facture')
+        self.assertEqual(donnees['statut'], 'brouillon')
+        self.assertEqual(donnees['soumission_origine_numero'], self.soumission.numero)
+        facture = self.recharger(Document.objects.get(pk=donnees['id']))
+        self.assertEqual(facture.total, self.soumission.total)
+        self.assertEqual(facture.lignes.count(), 2)
+        self.assertEqual(facture.categorie, 'developpement')
+
+        soumission = self.recharger(self.soumission)
+        self.assertEqual(soumission.statut, 'acceptee')
+        self.assertIsNotNone(soumission.date_reponse)
+        detail = self.api.get(f'/api/documents/{soumission.id}/').json()
+        self.assertEqual(detail['facture_convertie'], {'id': facture.id, 'numero': facture.numero})
+        # Rien n'est envoyé au client tant que la facture n'a pas été vérifiée.
+        self.courriels.assert_not_called()
+
+    def test_conversion_reprend_le_plan_de_paiement(self):
+        total = self.soumission.total
+        definir_echeancier(self.soumission, [
+            {'date': jours(-5), 'montant': Decimal('500'), 'note': 'Dépôt'},
+            {'date': jours(25), 'montant': total - 500, 'note': ''},
+        ])
+        facture = Document.objects.get(pk=self.convertir().json()['id'])
+        dates = [e.date for e in facture.echeances.order_by('date')]
+        # Décalé au jour de la conversion, l'écart entre versements est conservé.
+        self.assertEqual(dates, [AUJOURDHUI, jours(30)])
+        self.assertEqual(facture.date_echeance, jours(30))
+
+    def test_double_conversion_refusee(self):
+        self.assertEqual(self.convertir().status_code, 201)
+        self.assertEqual(self.convertir().status_code, 400)
+        self.assertEqual(self.soumission.factures_converties.count(), 1)
+
+    def test_conversion_refusee_sur_facture_et_soumission_payee(self):
+        self.assertEqual(self.convertir(self.facture).status_code, 400)
+        self.soumission.statut = 'payee'
+        self.soumission.save()
+        self.assertEqual(self.convertir().status_code, 400)
+
+    def test_soumission_convertie_non_supprimable(self):
+        self.convertir()
+        self.assertEqual(self.api.delete(f'/api/documents/{self.soumission.id}/').status_code, 400)
+        self.assertTrue(Document.objects.filter(pk=self.soumission.pk).exists())
+
+    def test_vente_comptee_une_seule_fois(self):
+        from .paiements import ventes_emises
+
+        facture = Document.objects.get(pk=self.convertir().json()['id'])
+        facture.statut = 'envoyee'
+        facture.save()
+        self.soumission.statut = 'payee'
+        self.soumission.save()
+        ventes = list(ventes_emises(jours(-1), jours(1)))
+        self.assertIn(facture, ventes)
+        self.assertNotIn(self.soumission, ventes)
+
+
 class DocumentsGeneresTests(BaseFacture):
     """Les gabarits PDF et les courriels se construisent sans erreur avec paiements et plan."""
 
