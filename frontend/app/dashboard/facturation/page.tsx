@@ -441,7 +441,7 @@ export default function FacturationDashboardPage({
                     )}
                     {(doc.statut === 'acceptee' || doc.statut === 'payee') && doc.date_reponse && (
                       <span className="text-[11px] text-black/45" suppressHydrationWarning>
-                        Signée le {new Date(doc.date_reponse).toLocaleDateString('fr-CA')}
+                        {doc.contrat_id ? 'Signée' : 'Acceptée'} le {new Date(doc.date_reponse).toLocaleDateString('fr-CA')}
                       </span>
                     )}
                   </div>

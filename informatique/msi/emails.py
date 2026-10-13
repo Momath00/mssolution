@@ -420,21 +420,29 @@ def envoyer_rappel_paiement(document):
     })
 
 
-def _boutons_soumission_html(document):
+def _bouton_consulter_soumission_html(document):
+    """Lien vers la page de la soumission — le client y consulte le détail ; il donne sa
+    réponse par téléphone ou par courriel, puis la soumission est convertie en facture
+    depuis le tableau de bord."""
     lien = f'{settings.SITE_URL}/soumission/{document.token}/'
     return (
         f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:16px;">'
         f'<tr>'
-        f'<td style="background:#16a34a;border-radius:8px;">'
-        f'<a href="{lien}?reponse=accepter" style="display:inline-block;padding:12px 20px;color:#fff;'
-        f'font-weight:bold;font-size:14px;text-decoration:none;">Accepter la soumission</a>'
-        f'</td>'
-        f'<td style="width:12px;"></td>'
-        f'<td style="border:1px solid #ccc;border-radius:8px;">'
-        f'<a href="{lien}" style="display:inline-block;padding:12px 18px;color:#555;'
+        f'<td style="background:#1a1440;border-radius:8px;">'
+        f'<a href="{lien}" style="display:inline-block;padding:12px 20px;color:#fff;'
         f'font-weight:bold;font-size:14px;text-decoration:none;">Consulter la soumission</a>'
         f'</td>'
         f'</tr></table>'
+    )
+
+
+def _pour_donner_suite_html(coordonnees):
+    telephone = (
+        f' ou appelez-nous au <strong>{coordonnees.telephone}</strong>' if coordonnees.telephone else ''
+    )
+    return (
+        f'<p style="margin-top:16px;">Pour donner suite &agrave; cette soumission, r&eacute;pondez simplement '
+        f'&agrave; ce courriel{telephone}.</p>'
     )
 
 
@@ -477,8 +485,8 @@ def envoyer_relance_soumission(document):
             f'<p>Elle est valide jusqu&rsquo;au <strong>{_date_fr(document.date_echeance)}</strong>.</p>'
             if document.date_echeance else ''
         )
-        + f'<p>Vous pouvez l&rsquo;accepter ou la refuser en un clic&nbsp;:</p>'
-        f'{_boutons_soumission_html(document)}'
+        + f'{_pour_donner_suite_html(Coordonnees.load())}'
+        f'{_bouton_consulter_soumission_html(document)}'
         f'<p style="margin-top:20px;">Une question ou un ajustement&nbsp;? R&eacute;pondez simplement &agrave; ce '
         f'courriel.</p>'
     )
@@ -496,7 +504,8 @@ def envoyer_rappel_expiration_soumission(document, jours_restants):
         f'expire {quand}, le <strong>{_date_fr(document.date_echeance)}</strong>. Apr&egrave;s cette date, '
         f'les prix et disponibilit&eacute;s pourraient changer.</p>'
         f'{_resume_plan_soumission_html(document)}'
-        f'{_boutons_soumission_html(document)}'
+        f'{_pour_donner_suite_html(Coordonnees.load())}'
+        f'{_bouton_consulter_soumission_html(document)}'
     )
     _envoyer_au_client_soumission(document, f'Votre soumission {document.numero} expire bientôt', corps)
 
@@ -576,26 +585,7 @@ def envoyer_document(document):
 
     lien_signature_html = ''
     if not est_facture:
-        lien = f'{settings.SITE_URL}/soumission/{document.token}/'
-        lien_signature_html = (
-            f'<p style="margin-top:20px;">Consultez le d&eacute;tail de la soumission, ou acceptez/refusez-la '
-            f'directement ci-dessous&nbsp;:</p>'
-            f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:8px;">'
-            f'<tr>'
-            f'<td style="background:#16a34a;border-radius:8px;">'
-            f'<a href="{lien}?reponse=accepter" style="display:inline-block;padding:12px 20px;color:#fff;'
-            f'font-weight:bold;font-size:14px;text-decoration:none;">Accepter la soumission</a>'
-            f'</td>'
-            f'<td style="width:12px;"></td>'
-            f'<td style="border:1px solid #ccc;border-radius:8px;">'
-            f'<a href="{lien}?reponse=refuser" style="display:inline-block;padding:12px 18px;color:#555;'
-            f'font-weight:bold;font-size:14px;text-decoration:none;">Refuser la soumission</a>'
-            f'</td>'
-            f'</tr></table>'
-            f'<p style="margin-top:8px;font-size:12px;color:#888;">Ces liens vous am&egrave;nent &agrave; la page '
-            f'de la soumission — l&rsquo;acceptation devient alors votre contrat officiel, et aucune '
-            f'r&eacute;ponse n&rsquo;est enregistr&eacute;e sans votre confirmation explicite sur la page.</p>'
-        )
+        lien_signature_html = _pour_donner_suite_html(coordonnees) + _bouton_consulter_soumission_html(document)
 
     # Précise sans ambiguïté, sur une facture d'acompte ou de solde, à quelle soumission
     # acceptée elle se rattache — évite qu'un client se demande pourquoi il reçoit une

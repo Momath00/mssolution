@@ -347,6 +347,16 @@ class ConversionSoumissionTests(BaseFacture):
         self.assertEqual(self.api.delete(f'/api/documents/{self.soumission.id}/').status_code, 400)
         self.assertTrue(Document.objects.filter(pk=self.soumission.pk).exists())
 
+    def test_courriel_de_soumission_sans_boutons_accepter_refuser(self):
+        Coordonnees.objects.update_or_create(pk=1, defaults={'courriel': 'info@example.com', 'telephone': '514-555-0000'})
+        with mock.patch('msi.emails.generer_pdf_document', return_value=b'%PDF'):
+            envoyer_document(self.recharger(self.soumission))
+        html = self.courriels.return_value.Emails.send.call_args[0][0]['html']
+        self.assertNotIn('reponse=accepter', html)
+        self.assertNotIn('reponse=refuser', html)
+        self.assertIn('Consulter la soumission', html)
+        self.assertIn('514-555-0000', html)
+
     def test_vente_comptee_une_seule_fois(self):
         from .paiements import ventes_emises
 
