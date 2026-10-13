@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 
-import { apiUrlServer, type SoumissionPublique } from '@/lib/api';
+import { apiUrlServer, fetchServer, type Coordonnees, type SoumissionPublique } from '@/lib/api';
 import { formaterDate, formaterMontant } from '@/lib/argent';
 
 import ReponseSoumission from './ReponseSoumission';
@@ -20,18 +20,18 @@ async function getSoumission(token: string): Promise<SoumissionPublique | null> 
   }
 }
 
-export default async function SoumissionPubliquePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ token: string }>;
-  searchParams: Promise<{ reponse?: string }>;
-}) {
+async function getCoordonnees(): Promise<Coordonnees | null> {
+  try {
+    return await fetchServer<Coordonnees>('/api/coordonnees/');
+  } catch {
+    return null;
+  }
+}
+
+export default async function SoumissionPubliquePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const { reponse } = await searchParams;
-  const soumission = await getSoumission(token);
+  const [soumission, coordonnees] = await Promise.all([getSoumission(token), getCoordonnees()]);
   if (!soumission) notFound();
-  const intentionInitiale = reponse === 'accepter' || reponse === 'refuser' ? reponse : null;
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-16">
@@ -141,11 +141,12 @@ export default async function SoumissionPubliquePage({
       <div className="mt-10 border-t border-black/10 pt-8">
         <ReponseSoumission
           token={token}
-          statutInitial={soumission.statut}
+          statut={soumission.statut}
           dateReponse={soumission.date_reponse}
           dateEcheance={soumission.date_echeance}
           numero={soumission.numero}
-          intentionInitiale={intentionInitiale}
+          contratSigne={soumission.contrat_signe}
+          coordonnees={coordonnees}
         />
       </div>
     </div>

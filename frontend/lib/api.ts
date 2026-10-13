@@ -275,6 +275,7 @@ export interface SoumissionPublique {
   conditions: ClauseContrat[];
   pourcentage_acompte: string | null;
   echeances: { date: string; montant: string; note: string }[];
+  contrat_signe: boolean;
 }
 
 export interface ArticleCatalogue {

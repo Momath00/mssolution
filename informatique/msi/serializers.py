@@ -265,6 +265,9 @@ class SoumissionPubliqueSerializer(serializers.ModelSerializer):
     total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     conditions = serializers.SerializerMethodField()
     echeances = serializers.SerializerMethodField()
+    # Faux pour une soumission acceptée au téléphone puis convertie en facture : aucun
+    # contrat signé à télécharger.
+    contrat_signe = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -272,8 +275,11 @@ class SoumissionPubliqueSerializer(serializers.ModelSerializer):
             'numero', 'client_nom', 'categorie', 'categorie_label', 'statut',
             'date_creation', 'date_echeance', 'date_reponse', 'lignes',
             'sous_total', 'montant_tps', 'montant_tvq', 'total', 'conditions',
-            'pourcentage_acompte', 'echeances',
+            'pourcentage_acompte', 'echeances', 'contrat_signe',
         ]
+
+    def get_contrat_signe(self, document):
+        return hasattr(document, 'contrat')
 
     def _versements(self, document):
         """Une fois acceptée, le plan qui fait foi est celui figé au contrat ; avant, c'est le
