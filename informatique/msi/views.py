@@ -8,6 +8,7 @@ from django.db.models import ProtectedError, Sum
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.cache import add_never_cache_headers
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -304,6 +305,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
         pdf_bytes = generer_pdf_document(document)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{document.numero}.pdf"'
+        # Régénéré à chaque appel : sans ça, le navigateur réaffiche l'ancien PDF après une modification.
+        add_never_cache_headers(response)
         return response
 
 
@@ -791,6 +794,7 @@ class RapportComptableView(APIView):
         pdf_bytes, _ = _generer_et_archiver_rapport(annee, trimestre)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="Rapport-comptable-T{trimestre}-{annee}.pdf"'
+        add_never_cache_headers(response)
         return response
 
 
