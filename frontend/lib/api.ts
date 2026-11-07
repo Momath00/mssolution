@@ -14,7 +14,8 @@ export interface Realisation {
   client: string;
   secteur: string;
   image: string;
-  lien_site: string;
+  /** Absent des réponses publiques : visible seulement dans l'administration. */
+  lien_site?: string;
   statut: Statut;
   date_creation: string;
 }
