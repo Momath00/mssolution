@@ -279,18 +279,14 @@ export default async function Home() {
             <Reveal className="flex flex-col items-center justify-between gap-4 text-center sm:flex-row sm:items-end sm:text-left">
               <div>
                 <h2 className="text-balance text-3xl font-bold tracking-tight text-navy sm:text-[2.75rem] sm:leading-tight">
-                  Réalisations récentes
+                  Nos réalisations
                 </h2>
                 <p className="mt-3 text-lg text-black/55">Des entreprises d&apos;ici qui travaillent autrement.</p>
               </div>
-              <Link href="/realisations" className="group inline-flex items-center gap-2 text-sm font-semibold text-navy">
-                Toutes nos réalisations
-                <Icone d={ICONES.fleche} className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </Link>
             </Reveal>
             <div className="mt-12 grid gap-5 sm:grid-cols-3">
-              {realisations.slice(0, 3).map((r, i) => (
-                <Reveal key={r.id} delay={i * 80}>
+              {realisations.map((r, i) => (
+                <Reveal key={r.id} delay={(i % 3) * 80}>
                   <div className="group h-full overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/5">
                     {r.image && (
                       <div className="relative aspect-[16/10] w-full overflow-hidden bg-[#f1efea]">
