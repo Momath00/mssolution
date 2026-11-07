@@ -30,6 +30,14 @@ class RealisationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'date_creation']
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Le lien vers le site du client est confidentiel : réservé à l'administration.
+        request = self.context.get('request')
+        if not (request and request.user and request.user.is_authenticated):
+            data.pop('lien_site', None)
+        return data
+
 
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:

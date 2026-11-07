@@ -53,17 +53,6 @@ export default async function RealisationsPage() {
                   <h2 className="mt-1 text-lg font-semibold text-navy">{r.titre}</h2>
                   <p className="mt-1 text-sm font-medium text-black/50">{r.client}</p>
                   <p className="mt-3 flex-1 text-sm leading-relaxed text-black/60">{r.description}</p>
-                  {r.lien_site && (
-                    <a
-                      href={r.lien_site}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-accent"
-                    >
-                      Voir le site
-                      <span className="transition-transform group-hover:translate-x-1">→</span>
-                    </a>
-                  )}
                 </div>
               </article>
             </Reveal>
